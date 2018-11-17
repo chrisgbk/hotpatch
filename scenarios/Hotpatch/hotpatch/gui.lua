@@ -1,5 +1,5 @@
 local hotpatch_tools = require 'hotpatch.mod-tools'
-hotpatch_tools.static_mod('hotpatch-gui', '1.0.1', [===[
+hotpatch_tools.static_mod('hotpatch-gui', '1.0.2', [===[
 --[[
 
 Copyright 2018 Chrisgbk
@@ -65,6 +65,11 @@ script.on_event(defines.events.on_player_joined_game, function(e)
         menu.destroy()
     end
     
+    local IDE = center['hotpatch-IDE']
+    if IDE then 
+        IDE.destroy()
+    end
+    
     local main = center['hotpatch-main']
     if main then 
         main.destroy()
@@ -78,8 +83,8 @@ local on_gui_selection_state_changed_handlers
 
 on_gui_click_handlers = {
     ['hotpatch-button'] = function(e)
-        on_gui_click_handlers['hotpatch-menu-launch_GUI'](e)
-        do return end
+        --on_gui_click_handlers['hotpatch-menu.IDE'](e)
+        --do return end
         local player = game.players[e.player_index]
         local top = mod_gui.get_button_flow(player)
         local left = mod_gui.get_frame_flow(player)
@@ -88,32 +93,43 @@ on_gui_click_handlers = {
         local menu = left['hotpatch-menu']
         if not menu then
             menu = left.add{type = 'frame', name = 'hotpatch-menu', direction = 'vertical'}
-            menu.add{type = 'button', name = 'hotpatch-menu-launch_GUI', caption = 'Toggle IDE', tooltip = 'Open debugging GUI'}
-            menu.add{type = 'button', name = 'hotpatch-menu-close', caption = 'Close Menu'}
+            menu.add{type = 'button', name = 'hotpatch-menu.IDE', caption = 'Mod IDE', tooltip = 'Open debugging GUI'}
+            menu.add{type = 'button', name = 'hotpatch-menu.console', caption = 'Mod Console', tooltip = 'Open debugging console'}
             menu.style.visible = true
             return
         end
         menu.style.visible = not menu.style.visible
     end,
-    ['hotpatch-menu-launch_GUI'] = function(e)
+    ['hotpatch-menu'] = function(e)
         local player = game.players[e.player_index]
         local top = mod_gui.get_button_flow(player)
         local left = mod_gui.get_frame_flow(player)
         local center = player.gui.center
         
-        local main = center['hotpatch-main']
-        if not main then
-            main = center.add{type = 'frame', name = 'hotpatch-main', direction = 'vertical', caption = 'Hotpatch IDE'}
-            local top_flow = main.add{type = 'flow', name = 'hotpatch-main-top', direction = 'horizontal'}
-            top_flow.add{type = 'label', name = 'hotpatch-mod-label', caption = 'Mod: '}
-            local main_dropdown = top_flow.add{type = 'drop-down', name = 'hotpatch-mod-selector'}
-            top_flow.add{type = 'label', name = 'hotpatch-mod-version', caption = 'Version: No mod selected'}
-            local main_table = main.add{type = 'table', name = 'hotpatch-main-table', column_count = 2}
-            local files = main_table.add{type = 'scroll-pane', name = 'hotpatch-files', direction='vertical'}
+        local menu = left['hotpatch-menu']
+        menu.style.visible = not menu.style.visible
+        
+        on_gui_click_handlers[e.element.name](e)
+    end,
+    ['hotpatch-menu.IDE'] = function(e)
+        local player = game.players[e.player_index]
+        local top = mod_gui.get_button_flow(player)
+        local left = mod_gui.get_frame_flow(player)
+        local center = player.gui.center
+        
+        local IDE = center['hotpatch-IDE']
+        if not IDE then
+            IDE = center.add{type = 'frame', name = 'hotpatch-IDE', direction = 'vertical', caption = 'Hotpatch IDE'}
+            local top_flow = IDE.add{type = 'flow', name = 'hotpatch-IDE-top', direction = 'horizontal'}
+            top_flow.add{type = 'label', name = 'hotpatch-IDE-mod-label', caption = 'Mod: '}
+            local IDE_dropdown = top_flow.add{type = 'drop-down', name = 'hotpatch-IDE-mod-selector'}
+            top_flow.add{type = 'label', name = 'hotpatch-IDE-mod-version', caption = 'Version: No mod selected'}
+            local IDE_table = IDE.add{type = 'table', name = 'hotpatch-IDE-table', column_count = 2}
+            local files = IDE_table.add{type = 'scroll-pane', name = 'hotpatch-IDE-files', direction='vertical'}
             files.style.height = 600
             files.vertical_scroll_policy = 'always'
-            files = files.add{type = 'table', name = 'hotpatch-files-table', column_count = 1}
-            local code = main_table.add{type = 'text-box', name = 'hotpatch-code'}
+            files = files.add{type = 'table', name = 'hotpatch-IDE-files-table', column_count = 1}
+            local code = IDE_table.add{type = 'text-box', name = 'hotpatch-IDE-code'}
             code.word_wrap = true
             files.style.width = 400
             files.style.cell_spacing = 0
@@ -121,26 +137,118 @@ on_gui_click_handlers = {
             files.style.bottom_padding = 0
             code.style.width = 600
             code.style.height = 600
-            main.style.visible = false
+            IDE.style.visible = false
         end
         
-        local main_dropdown = main['hotpatch-main-top']['hotpatch-mod-selector']
-        main_dropdown.clear_items()
+        local IDE_dropdown = IDE['hotpatch-IDE-top']['hotpatch-IDE-mod-selector']
+        IDE_dropdown.clear_items()
         for k, v in ipairs(installed_mods) do
-            main_dropdown.add_item(v.name)
+            IDE_dropdown.add_item(v.name)
         end
             
-        main.style.visible = not main.style.visible
-        if main.style.visible then
-            player.opened = main
+        IDE.style.visible = not IDE.style.visible
+        if IDE.style.visible then
+            player.opened = IDE
         else
             player.opened = nil
         end
     end,
-    ['hotpatch-menu-close'] = function(e)
-        on_gui_click_handlers['hotpatch-button'](e)
+    ['hotpatch-menu.console'] = function(e)
+        local player = game.players[e.player_index]
+        local top = mod_gui.get_button_flow(player)
+        local left = mod_gui.get_frame_flow(player)
+        local center = player.gui.center
+        
+        local console = center['hotpatch-console']
+        if not console then
+            console = center.add{type = 'frame', name = 'hotpatch-console', direction = 'vertical', caption = 'Hotpatch Console'}
+            local top_flow = console.add{type = 'flow', name = 'hotpatch-console-top', direction = 'horizontal'}
+            top_flow.add{type = 'label', name = 'hotpatch-console-mod-label', caption = 'Mod: '}
+            local console_dropdown = top_flow.add{type = 'drop-down', name = 'hotpatch-console-mod-selector'}
+            top_flow.add{type = 'label', name = 'hotpatch-console-mod-version', caption = 'Version: No mod selected'}
+            local bottom_flow = console.add{type = 'flow', name = 'hotpatch-console-bottom', direction = 'vertical'}
+            local output = bottom_flow.add{type = 'text-box', name = 'hotpatch-console-output'}
+            local bottom_input_flow = bottom_flow.add{type = 'flow', name = 'hotpatch-console-bottom-input', direction = 'horizontal'}
+            local input = bottom_input_flow.add{type = 'textfield', name = 'hotpatch-console-input'}
+            bottom_input_flow.add{type = 'button', name = 'hotpatch-console-run', caption = 'Run', tooltip = 'Run Lua Code'}
+            output.style.width = 800
+            output.style.height = 600
+            input.style.width = 600
+        end
+        
+        local console_dropdown = console['hotpatch-console-top']['hotpatch-console-mod-selector']
+        console_dropdown.clear_items()
+        for k, v in ipairs(loaded_mods) do
+            console_dropdown.add_item(v.name)
+        end
+        
+        console.style.visible = not console.style.visible
+        if console.style.visible then
+            player.opened = console
+        else
+            player.opened = nil
+        end
     end,
-    ['hotpatch-file'] = function(e)
+    ['hotpatch-console-run'] = function(e)
+        local player = game.players[e.player_index]
+        
+        local top = mod_gui.get_button_flow(player)
+        local left = mod_gui.get_frame_flow(player)
+        local center = player.gui.center
+        
+        local console = center['hotpatch-console']
+        local output = console['hotpatch-console-bottom']['hotpatch-console-output']
+        local input = console['hotpatch-console-bottom']['hotpatch-console-bottom-input']['hotpatch-console-input']
+        local console_dropdown = console['hotpatch-console-top']['hotpatch-console-mod-selector']
+        
+        if not player.admin then
+            output.text = table.concat{output.text, '\n', 'Only admins!'}
+            return
+        end
+        
+        if not (console_dropdown.selected_index > 0) then
+            output.text = table.concat{output.text, '\n', 'Select a mod!'}
+            return
+        end
+        
+        local mod_name = console_dropdown.items[console_dropdown.selected_index]
+        local loaded_index = find_loaded_mod(mod_name)
+        local env = loaded_mods[loaded_index].env
+        local old_print = env.print
+        local old_log = env.log
+        
+        
+        
+        
+        
+        env.print = function(...)
+            --local count = select('#', ...)
+            local t = table.pack(...)
+            for k, v in pairs(t) do
+                t[k] = tostring(v)
+            end
+            local text = table.concat(t, '\t')
+            output.text = table.concat{output.text, '\n', text}
+        end
+        
+        env.log = function(text)
+            output.text = table.concat{output.text, '\n', text}
+        end
+        
+        local code, err = load(input.text, input.text, 't', env)
+        if code then 
+            local success, err = pcall(code)
+            if not success then
+                output.text = table.concat{output.text, '\n', err}
+            end
+        else
+            output.text = table.concat{output.text, '\n', err}
+        end
+        
+        env.print = old_print
+        env.log = old_log
+    end,
+    ['hotpatch-IDE-file'] = function(e)
         local player = game.players[e.player_index]
         local top = mod_gui.get_button_flow(player)
         local left = mod_gui.get_frame_flow(player)
@@ -148,7 +256,7 @@ on_gui_click_handlers = {
     
         local element = e.element
         local previous
-        for k, v in pairs(center['hotpatch-main']['hotpatch-main-table']['hotpatch-files']['hotpatch-files-table'].children) do
+        for k, v in pairs(center['hotpatch-IDE']['hotpatch-IDE-table']['hotpatch-IDE-files']['hotpatch-IDE-files-table'].children) do
             if table.compare(v.style.font_color or {}, {r=1.0, g=1.0, b=0.0, a=1.0}) then
                 previous = v
                 break
@@ -159,9 +267,9 @@ on_gui_click_handlers = {
         end
         element.style.font_color = {r=1.0, g=1.0, b=0.0, a=1.0}
         local file = element.name:match('.-%.(.*)')
-        local selected = center['hotpatch-main']['hotpatch-main-top']['hotpatch-mod-selector']
+        local selected = center['hotpatch-IDE']['hotpatch-IDE-top']['hotpatch-IDE-mod-selector']
         local mod_name = selected.items[selected.selected_index]
-        local code = center['hotpatch-main']['hotpatch-main-table']['hotpatch-code']
+        local code = center['hotpatch-IDE']['hotpatch-IDE-table']['hotpatch-IDE-code']
         local index = find_installed_mod(mod_name)
         if index then
             local mod = installed_mods[index]
@@ -184,7 +292,27 @@ script.on_event(defines.events.on_gui_click, function(e)
 end)
 
 on_gui_selection_state_changed_handlers = {
-    ['hotpatch-mod-selector'] = function(e)
+    ['hotpatch-console-mod-selector'] = function(e)
+        local player = game.players[e.player_index]
+        local top = mod_gui.get_button_flow(player)
+        local left = mod_gui.get_frame_flow(player)
+        local center = player.gui.center
+        
+        local element = e.element
+        local name = element.items[element.selected_index]
+        if name then
+            local index = find_loaded_mod(name)
+            if index then
+                local mod = loaded_mods[index]
+                local version_label = center['hotpatch-console']['hotpatch-console-top']['hotpatch-console-mod-version']
+                version_label.caption = 'Version: ' .. mod.version
+                local console = center['hotpatch-console']
+                local output = console['hotpatch-console-bottom']['hotpatch-console-output']
+                output.text = ''
+            end
+        end
+    end,
+    ['hotpatch-IDE-mod-selector'] = function(e)
         local player = game.players[e.player_index]
         local top = mod_gui.get_button_flow(player)
         local left = mod_gui.get_frame_flow(player)
@@ -197,19 +325,19 @@ on_gui_selection_state_changed_handlers = {
             local index = find_installed_mod(name)
             if index then
                 local mod = installed_mods[index]
-                local version_label = center['hotpatch-main']['hotpatch-main-top']['hotpatch-mod-version']
+                local version_label = center['hotpatch-IDE']['hotpatch-IDE-top']['hotpatch-IDE-mod-version']
                 version_label.caption = 'Version: ' .. mod.version
-                local list = center['hotpatch-main']['hotpatch-main-table']['hotpatch-files']['hotpatch-files-table']
+                local list = center['hotpatch-IDE']['hotpatch-IDE-table']['hotpatch-IDE-files']['hotpatch-IDE-files-table']
                 list.clear()
-                local file = list.add{type = 'label', style = 'hoverable_bold_label', caption = 'control', name = 'hotpatch-file.control'}
+                local file = list.add{type = 'label', style = 'hoverable_bold_label', caption = 'control', name = 'hotpatch-IDE-file.control'}
                 file.style.bottom_padding = 0
                 file.style.top_padding = 0
                 for k, v in pairs(mod.files) do
-                    file = list.add{type = 'label', style = 'hoverable_bold_label', caption = k, name = 'hotpatch-file.' .. k}
+                    file = list.add{type = 'label', style = 'hoverable_bold_label', caption = k, name = 'hotpatch-IDE-file.' .. k}
                     file.style.bottom_padding = 0
                     file.style.top_padding = 0
                 end
-                local code = center['hotpatch-main']['hotpatch-main-table']['hotpatch-code']
+                local code = center['hotpatch-IDE']['hotpatch-IDE-table']['hotpatch-IDE-code']
                 code.text = ''
             end
         end
@@ -227,7 +355,12 @@ script.on_event(defines.events.on_gui_closed, function(e)
     local element = e.element
     if e.gui_type == defines.gui_type.custom then
         if element and element.valid then
-            if element.name == 'hotpatch-main' then
+            if element.name == 'hotpatch-IDE' then
+                if element.style.visible then
+                    player.play_sound{path = "utility/gui_click"}
+                end
+                element.style.visible = false
+            elseif element.name == 'hotpatch-console' then
                 if element.style.visible then
                     player.play_sound{path = "utility/gui_click"}
                 end

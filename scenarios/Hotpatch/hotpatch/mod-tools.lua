@@ -133,8 +133,8 @@ end
 
 -- This scenario contains an embedded locale, but it's unavailable until this file finishes loading
 -- ie: calls to log{...} will fail right now, but will work in events
--- Rseding91 doesn't want to fix it (https://forums.factorio.com/viewtopic.php?f=23&t=60767)
--- I'll make it work myself ¯\_(ツ)_/¯
+-- Rseding91 fixed it for 0.17 (https://forums.factorio.com/viewtopic.php?f=23&t=60767)
+-- I'll make it work myself in 0.16 ¯\_(ツ)_/¯
 local static_cfg = [[
 [hotpatch]
 log=@__1__:__2__] __3__
@@ -253,12 +253,13 @@ local function static_translate(t, recursive)
     -- only translate tables that have a string as the first item
     local k = t[1]
     if type(k) ~= 'string' then return t end
-    local v
+    
     -- make a copy, don't destroy the original table, after we copy we can translate in place
     if not recursive then
         t = table.deepcopy(t)
     end
     -- translate any arguments as well
+    local v
     for i = 2, #t do
         v = t[i]
         if type(v) == 'table' then
@@ -288,10 +289,10 @@ local function static_translate(t, recursive)
     
     -- re-substitution engine: match value of parameter n to provide additional translation; use for pluralization
     -- __n:(pattern-1)=substitution-1;(pattern-2)=substitution-2;...(pattern-i)=substitution-i;__
-    for p, m in result:gmatch('__(%d+)(:.-;)__') do
-        for x, y in m:gmatch('%((.-)%)=(.-[^%%]);') do
-            if t[tonumber(p)+1]:match(x) then 
-                result = result:gsub(table.concat{'__', p, escape(m), '__'}, unescape(y))
+    for n, p in result:gmatch('__(%d+)(:.-;)__') do
+        for x, y in p:gmatch('%((.-)%)=(.-[^%%]);') do
+            if t[tonumber(n)+1]:match(x) then 
+                result = result:gsub(table.concat{'__', n, escape(p), '__'}, unescape(y))
                 break
             end
         end
@@ -413,18 +414,23 @@ end
 debug_log({'hotpatch-info.complete', {'hotpatch-info.loading-libs'}})
 
 find_installed_mod = function(mod_name)
-    for k, v in pairs(global.mods) do
-        if v.name == mod_name then
-            return k
+    local mod
+    local mods = global.mods
+    for i = 1, #mods do
+        mod = mods[i]
+        if mod.name == mod_name then
+            return i
         end
     end
     return nil
 end
 
 find_loaded_mod = function(mod_name)
-    for k, v in pairs(loaded_mods) do
-        if v.name == mod_name then
-            return k
+    local mod
+    for i = 1, #loaded_mods do
+        mod = loaded_mods[i]
+        if mod.name == mod_name then
+            return i
         end
     end
     return nil
@@ -891,10 +897,12 @@ on_event = function(event)
     local event_name = (event_names[event.name] or event.name)
     local f
     debug_log({'hotpatch-trace.event-processing', event_name})
-    for k, v in pairs(loaded_mods) do
-        f = v.on_event[event.name]
+    local mod
+    for i = 1, #loaded_mods do
+        mod = loaded_mods[i]
+        f = mod.on_event[event.name]
         if f then 
-            debug_log({'hotpatch-trace.event-running', event_name}, v.name)
+            debug_log({'hotpatch-trace.event-running', event_name}, mod.name)
             f(event)
         end
     end
@@ -905,10 +913,12 @@ if debug_log_on_tick then
         local tick = event.nth_tick
         local f
         debug_log({'hotpatch-trace.nth-tick-event-processing', tick})
-        for k, v in pairs(loaded_mods) do
-            f = v.on_nth_tick[event.nth_tick]
+        local mod
+        for i = 1, #loaded_mods do
+            mod = loaded_mods[i]
+            f = mod.on_nth_tick[event.nth_tick]
             if f then 
-                debug_log({'hotpatch-trace.nth-tick-event-running', tick}, v.name)
+                debug_log({'hotpatch-trace.nth-tick-event-running', tick}, mod.name)
                 f(event)
             end
         end
@@ -917,10 +927,12 @@ else
     on_nth_tick = function(event)
         local tick = event.nth_tick
         local f
-        for k, v in pairs(loaded_mods) do
-            f = v.on_nth_tick[event.nth_tick]
+        local mod
+        for i = 1, #loaded_mods do
+            mod = loaded_mods[i]
+            f = mod.on_nth_tick[event.nth_tick]
             if f then 
-                debug_log({'hotpatch-trace.nth-tick-event-running', tick}, v.name)
+                debug_log({'hotpatch-trace.nth-tick-event-running', tick}, mod.name)
                 f(event)
             end
         end
@@ -932,8 +944,8 @@ local register_all_events = function()
     script.on_event(defines.events, nil)
     script.on_nth_tick(nil, nil)
     --re-register all mod events
-    for k, v in pairs(loaded_mods) do
-        register_mod_events(k)
+    for i = 1, #loaded_mods do
+        register_mod_events(i)
     end
 end
 
@@ -1018,8 +1030,10 @@ end
 register_on_tick = function(mod_name)
     local found_event
     --
-    for k, v in pairs(loaded_mods) do
-        local f = v.on_tick
+    local mod
+    for i = 1, #loaded_mods do
+        mod = loaded_mods[i]
+        local f = mod.on_tick
         if f then 
             found_event = true 
             break 
@@ -1036,8 +1050,10 @@ end
 register_nth_tick = function(mod_name, nth_tick)
     local found_event
     --
-    for k, v in pairs(loaded_mods) do
-        local f = v.on_nth_tick[nth_tick]
+    local mod
+    for i = 1, #loaded_mods do
+        mod = loaded_mods[i]
+        local f = mod.on_nth_tick[nth_tick]
         if f then 
             found_event = true 
             break 
@@ -1055,8 +1071,10 @@ end
 
 register_event = function(mod_name, event_name)
     local found_event
-    for k, v in pairs(loaded_mods) do
-        local f = v.on_event[event_name]
+    local mod
+    for i = 1, #loaded_mods do
+        mod = loaded_mods[i]
+        local f = mod.on_event[event_name]
         if f then found_event = true break end
     end
     debug_log({'hotpatch-trace.on-event-registered', nth_tick}, mod_name)
