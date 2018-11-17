@@ -1,5 +1,5 @@
 local hotpatch_tools = require 'hotpatch.mod-tools'
-hotpatch_tools.static_mod('hotpatch-gui', '1.0.0', [===[
+hotpatch_tools.static_mod('hotpatch-gui', '1.0.1', [===[
 --[[
 
 Copyright 2018 Chrisgbk
@@ -55,18 +55,10 @@ script.on_event(defines.events.on_player_joined_game, function(e)
     local left = mod_gui.get_frame_flow(player)
     local center = player.gui.center
     
-    local button = top.add{type = 'button', name = 'hotpatch-button', caption = 'HP', tooltip = 'Hotpatch'}
-end)
-
-script.on_event(defines.events.on_player_left_game, function(e)
-    local player = game.players[e.player_index]
-    local top = mod_gui.get_button_flow(player)
-    local left = mod_gui.get_frame_flow(player)
-    local center = player.gui.center
-    
     local button = top['hotpatch-button']
-    button.destroy()
-    
+    if button then
+        button.destroy()
+    end
     local menu = left['hotpatch-menu']
     if menu then 
         menu.destroy()
@@ -76,6 +68,8 @@ script.on_event(defines.events.on_player_left_game, function(e)
     if main then 
         main.destroy()
     end
+    
+    button = top.add{type = 'button', name = 'hotpatch-button', caption = 'HP', tooltip = 'Hotpatch'}
 end)
 
 local on_gui_click_handlers
@@ -110,8 +104,9 @@ on_gui_click_handlers = {
         if not main then
             main = center.add{type = 'frame', name = 'hotpatch-main', direction = 'vertical', caption = 'Hotpatch IDE'}
             local top_flow = main.add{type = 'flow', name = 'hotpatch-main-top', direction = 'horizontal'}
-            top_flow.add{type = 'label', name = 'hotpatch-mod-label', caption = 'Choose mod'}
+            top_flow.add{type = 'label', name = 'hotpatch-mod-label', caption = 'Mod: '}
             local main_dropdown = top_flow.add{type = 'drop-down', name = 'hotpatch-mod-selector'}
+            top_flow.add{type = 'label', name = 'hotpatch-mod-version', caption = 'Version: No mod selected'}
             local main_table = main.add{type = 'table', name = 'hotpatch-main-table', column_count = 2}
             local files = main_table.add{type = 'scroll-pane', name = 'hotpatch-files', direction='vertical'}
             files.style.height = 600
@@ -135,6 +130,11 @@ on_gui_click_handlers = {
         end
             
         main.style.visible = not main.style.visible
+        if main.style.visible then
+            player.opened = main
+        else
+            player.opened = nil
+        end
     end,
     ['hotpatch-menu-close'] = function(e)
         on_gui_click_handlers['hotpatch-button'](e)
@@ -196,6 +196,8 @@ on_gui_selection_state_changed_handlers = {
             local index = find_installed_mod(name)
             if index then
                 local mod = installed_mods[index]
+                local version_label = center['hotpatch-main']['hotpatch-main-top']['hotpatch-mod-version']
+                version_label.caption = 'Version: ' .. mod.version
                 local list = center['hotpatch-main']['hotpatch-main-table']['hotpatch-files']['hotpatch-files-table']
                 list.clear()
                 local file = list.add{type = 'label', caption = 'control', name = 'hotpatch-file.control'}
@@ -217,6 +219,21 @@ script.on_event(defines.events.on_gui_selection_state_changed, function(e)
     local element = e.element
     local handler = on_gui_selection_state_changed_handlers[element.name]
     if handler then handler(e) end
+end)
+
+script.on_event(defines.events.on_gui_closed, function(e)
+    local player = game.players[e.player_index]
+    local element = e.element
+    if e.gui_type == defines.gui_type.custom then
+        if element and element.valid then
+            if element.name == 'hotpatch-main' then
+                if element.style.visible then
+                    player.play_sound{path = "utility/gui_click"}
+                end
+                element.style.visible = false
+            end
+        end
+    end
 end)
 
 ]===])

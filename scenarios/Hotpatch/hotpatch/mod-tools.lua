@@ -216,7 +216,7 @@ compilation-failed=compilation failed for mod
 execution-failed=execution failed for mod
 
 [test-pluralization]
-test=__1:(^1$)=single;(^[2-9]$)=plural singular digit;([1-2][0-9]$)=plural ends with double digit <30;(.*)=fallback case%; plural with embedded %;;__
+test=__1:(^1$)=singular;(^[2-9]$)=plural single digit;([1-2][0-9]$)=plural ends with double digit <30;(.*)=fallback case%; plural with embedded %;;__
 ]]
 
 local function build_locale(ini)
@@ -269,8 +269,9 @@ local function static_translate(t, recursive)
     -- slightly better than factorio, where only '' is supported
     if k:find('^%s*$') then table.remove(t, 1) return table.concat(t, k) end
     local pattern = static_locale[k]
-    -- if not translatable return normal table ref; factorio does instead following:
+    -- if not translatable return normal table ref; factorio does following instead:
     -- if not pattern then return 'Unknown key: ' .. k end
+    -- by returning the table we pass off to factorio runtime translation, where available
     if not pattern then return t end
     -- substitution of parameters: use literal value of parameter n
     -- __n__
@@ -1242,7 +1243,7 @@ local mod_tools_internal = setmetatable({
 
 --public API
 local mod_tools = setmetatable({
-    -- most code should use new_mod
+    -- most code should use static_mod
     static_mod = static_mod, -- (name, version, code, files)
     set_debug_level = function(level)
         debug_level = tonumber(_ENV.debug_settings.level) or debug_levels[_ENV.debug_settings.level]
