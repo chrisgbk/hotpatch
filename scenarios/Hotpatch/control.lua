@@ -18,6 +18,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 -- events, loaded mods, etc etc
 
 local hotpatch_tools = require 'hotpatch.mod-tools'
+local hotpatch_remote = require 'hotpatch.remote-interface'
 
 -- mod code goes here
 

@@ -37,9 +37,26 @@ end
 
 local function debug_log(what)
     if debug_mode then 
-        log(what)
+        local di = debug.getinfo(2)
+        local line = di.currentline
+        local file = di.source:gsub('%@.*/', '')
+        local to_log = '[HOTPATCH@' .. file .. ':' .. line ..'] ' .. what
+        log(to_log)
     end
 end
+
+local mt = {}
+mt.__index = function(t, k)
+    debug_log('info: _ENV nil variable access: '  .. k)
+    return nil
+end
+mt.__newindex = function(t, k, v)
+    debug_log('info: _ENV variable assignment: '  .. k)
+    rawset(t,k,v)
+end
+-- Don't let mods break this
+mt.__metatable = {}
+setmetatable(_ENV, mt)
 
 local event_names = {}
 for k,v in pairs(defines.events) do
@@ -47,6 +64,7 @@ for k,v in pairs(defines.events) do
 end
 
 -- load all possible libraries
+debug_log('info: loading Factorio.data.core.lualib...')
 local loaded_libraries = {
     camera = require 'camera',
     flying_tags = require 'flying_tags',
@@ -59,6 +77,7 @@ local loaded_libraries = {
     story = require 'story',
     util = require 'util',
 }
+debug_log('info: loading Factorio.data.core.lualib... Complete!')
 
 -- loaded mods, these are always dynamically loaded, not saved to global
 -- this holds a reference to the mods script object
@@ -71,8 +90,36 @@ local internal_notify = script.generate_event_name()
 
 -- TODO: use array part instead of hash part of tables for performance reasons
 
+local function uninstall_mod(mod_name)
+    loaded_mods[mod_name] = nil
+    mod_env[mod_name] = nil
+    debug_log('uninstalling mod: ' .. mod_name)
+    global.mod_files[mod_name] = nil
+    global.mod_code[mod_name] = nil
+    global.mod_version[mod_name] = nil
+    global.globals[mod_name] = nil
+end
+
+local function install_mod_file(mod_name, mod_file, mod_file_code)
+    global.mod_files[mod_name] = global.mod_files[mod_name] or {}
+    debug_log('installing mod file: ' .. k .. ' (' .. mod_name .. ')')
+
+    mod_file = mod_file:gsub('/', '.')
+    mod_file = mod_file:gsub('\\', '.')
+    global.mod_files[mod_name][mod_file] = mod_file_code
+end
+
 local function install_mod(mod_name, mod_version, mod_code, mod_files)
-    debug_log('[HOTPATCH] installing mod: ' .. mod_name .. ' ' .. mod_version)
+    debug_log('installing mod: ' .. mod_name .. ' ' .. mod_version)
+    if mod_code:find('--', 1, true) then
+        debug_log('WARNING: mod code contains comments: ' .. mod_name)
+        if not mod_code:find("\n", 1, true) then
+            error('ERROR: mod contains a single-line comment and no linefeed: ' .. mod_name)
+        end
+        
+        debug_log('WARNING: comments from console will comment out the entire code')
+    end
+
     global.mod_files[mod_name] = global.mod_files[mod_name] or {}
     global.mod_code[mod_name] = mod_code
     global.mod_version[mod_name] = mod_version
@@ -81,7 +128,7 @@ local function install_mod(mod_name, mod_version, mod_code, mod_files)
     
     if mod_files then
         for k,v in pairs(mod_files) do
-            debug_log('[HOTPATCH] installing mod file: ' .. k .. ' (' .. mod_name .. ')')
+            debug_log('installing mod file: ' .. k .. ' (' .. mod_name .. ')')
             local path = k
             path = path:gsub('/', '.')
             path = path:gsub('\\', '.')
@@ -94,16 +141,21 @@ end
 --TODO: pretty much all of this routine, which is unused currently
 -- This should unregister events and clear the globals
 local function mod_reset(mod_name)
-    local mod_global = global.globals[mod_name]
-    for k, v in pairs(mod_global) do
-        mod_global[k] = nil
-    end
+    --local mod_global = global.globals[mod_name]
+    --for k, v in pairs(mod_global) do
+    --    mod_global[k] = nil
+    --end
+    global.globals[mod_name] = {}
     mod_reset_events(mod_name)
 end
 
 local function mod_reset_events(mod_name)
     --TODO: deregister global event handlers that aren't needed anymore
+    
     local mod_script = loaded_mods[mod_name]
+    if not mod_script then
+        debug_log('WARNING: tried to reset events for mod that isn\'t running: ' .. mod_name)
+    end
     if mod_script then 
         mod_script.__events = {}
         mod_script.__ticks = {}
@@ -123,6 +175,7 @@ local function run_mod(mod_name)
         --unload currently loaded version, if any
         loaded_mods[mod_name] = nil
         
+        debug_log('setting up mod script shim: ' .. mod_name)
         --mods private script table/shim
         local mod_script = {}
         mod_script.__loaded_files = {}
@@ -142,11 +195,11 @@ local function run_mod(mod_name)
         end
         if not compat_mode then
             mod_script.on_event = function(event, f)
-                debug_log('[HOTPATCH] caching event: ' .. event_names[event] .. ' (' .. mod_name .. ')')
+                debug_log('caching event: ' .. event_names[event] .. ' (' .. mod_name .. ')')
                 mod_script.__events[event] = f
             end
             mod_script.on_nth_tick = function(tick, f)
-                debug_log('[HOTPATCH] caching nth_tick event: ' .. tick .. ' (' .. mod_name .. ')')
+                debug_log('caching nth_tick event: ' .. tick .. ' (' .. mod_name .. ')')
                 mod_script.__ticks[tick] = f
             end
         else   
@@ -180,6 +233,7 @@ local function run_mod(mod_name)
             return script.mod_name()
         end
         
+        debug_log('setting up mod _ENV: ' .. mod_name)
         -- mods private env
         local env = {}
         env.script = mod_script
@@ -196,6 +250,7 @@ local function run_mod(mod_name)
                 path = mod_script.__base .. path
             end
             if mod_script.__loaded_files[path] then
+                debug_log('loading cached require\'d file: ' .. path)
                 return mod_script.__loaded_files[path]
             else
                 local oldbase = mod_script.__base
@@ -205,13 +260,13 @@ local function run_mod(mod_name)
                 end
                 local file = global.mod_files[mod_name][path]
                 if file then
-                    debug_log('[HOTPATCH] loading require\'d file: ' .. path)
+                    debug_log('loading require\'d file: ' .. path)
                     mod_script.__loaded_files[path] = load(global.mod_files[mod_name][path], 'hotpatch require ' .. path .. ' (' .. mod_name .. ')', 'bt', env)
                     mod_script.__loaded_files[path]()
                     mod_script.__base = oldbase
                     return mod_script.__loaded_files[path]
                 end
-                debug_log('[HOTPATCH] loading from Factorio.data.core.lualib: ' .. path)
+                debug_log('loading from Factorio.data.core.lualib: ' .. path)
                 return package.loaded[path]
             end
         end
@@ -268,11 +323,11 @@ local function run_mod(mod_name)
         
         local mt = {}
         mt.__index = function(t, k)
-            debug_log('[HOTPATCH] info: _ENV nil variable access: '  .. k .. ' (' .. mod_name .. ')')
+            debug_log('info: _ENV nil variable access: '  .. k .. ' (' .. mod_name .. ')')
             return nil
         end
         mt.__newindex = function(t, k, v)
-            debug_log('[HOTPATCH] info: _ENV variable assignment: '  .. k .. ' (' .. mod_name .. ')')
+            debug_log('info: _ENV variable assignment: '  .. k .. ' (' .. mod_name .. ')')
             rawset(t,k,v)
         end
         -- Don't let mods break this
@@ -280,15 +335,41 @@ local function run_mod(mod_name)
         setmetatable(env, mt)
 
         --load/run code
-        debug_log('[HOTPATCH] loading mod: ' .. mod_name)
-        local mod_code = load(global.mod_code[mod_name], 'hotpatch loader (' .. mod_name .. ')', 'bt', env)
+        debug_log('loading mod: ' .. mod_name)
+        
+        local mod_code, message = load(global.mod_code[mod_name], 'hotpatch loader (' .. mod_name .. ')', 'bt', env)
+        if not mod_code then
+            debug_log('ERROR: compilation failed for mod: ' .. mod_name)
+            if game and game.player then
+                game.player.print('ERROR: compilation failed for mod: ' .. mod_name)
+                game.player.print(message)
+            end
+            debug_log(message)
+            uninstall_mod(mod_name)
+            return
+        end
+
         mod_env[mod_name] = env
         
         if strict_mode then
            env.global = {}
         end
-        debug_log('[HOTPATCH] running mod: ' .. mod_name)
-        mod_code()
+        debug_log('running mod: ' .. mod_name)
+        
+        local success, result = xpcall(mod_code, debug.traceback)
+        if not success then
+            debug_log('ERROR: execution failed for mod: ' .. mod_name)
+            debug_log(result)
+            if game and game.player then
+                game.player.print('ERROR: execution failed for mod: ' .. mod_name)
+                game.player.print(result)
+            end
+            uninstall_mod(mod_name)
+            
+            return
+        end
+        
+        
         if compat_mode then
             mod_script.__loaded = true
         end
@@ -299,18 +380,18 @@ local function run_mod(mod_name)
            env.global = global.globals[mod_name]
         end
         loaded_mods[mod_name] = mod_script
-        debug_log('[HOTPATCH] finished running mod: ' .. mod_name)
+        debug_log('finished running mod: ' .. mod_name)
         
         --load complete, start notifying on event subscriptions
         if not compat_mode then
             mod_script.on_event = function(event, f)
                 mod_script.__events[event] = f
-                debug_log('[HOTPATCH] registering event: ' .. event_names[event])
+                debug_log('registering event: ' .. event_names[event])
                 script.raise_event(mod_script.__notify, {mod=mod_script.__mod_name, event=event})
             end
             mod_script.on_nth_tick = function(tick, f)
                 mod_script.__ticks[tick] = f
-                debug_log('[HOTPATCH] registering nth_tick event: ' .. tick)
+                debug_log('registering nth_tick event: ' .. tick)
                 script.raise_event(mod_script.__notify, {mod=script.__mod_name, event='on_nth_tick', nth_tick=tick})
             end
         end
@@ -320,22 +401,22 @@ end
 -- Note: might be able to optimize this a bit
 -- event handlers to call into mods requested event handlers
 local on_event = function(event)
-    debug_log('[HOTPATCH] processing event: ' .. event_names[event.name])
+    debug_log('processing event: ' .. event_names[event.name])
     for k, v in pairs(loaded_mods) do
-        local f = v.__events[event.name]
+        local f = v and v.__events and v.__events[event.name]
         if f then 
-            debug_log('[HOTPATCH] running event: ' .. event_names[event.name] .. ' (' .. k .. ')')
+            debug_log('running event: ' .. event_names[event.name] .. ' (' .. k .. ')')
             f(event)
         end
     end
 end
 
 local on_nth_tick = function(event)
-    debug_log('[HOTPATCH] processing nth_tick: ' .. event.tick)
+    debug_log('processing nth_tick: ' .. event.tick)
     for k, v in pairs(loaded_mods) do
-        local f = v.__ticks[event.nth_tick]
+        local f =  v and v.__ticks and v.__ticks[event.nth_tick]
         if f then 
-            debug_log('[HOTPATCH] processing nth_tick: ' .. event.tick .. ' (' .. k .. ')')
+            debug_log('processing nth_tick: ' .. event.tick .. ' (' .. k .. ')')
             f(event)
         end
     end
@@ -343,19 +424,19 @@ end
 
 local function mod_register_events(mod_name)
     local mod = loaded_mods[mod_name]
-    debug_log('[HOTPATCH] registering events: ' .. mod_name)
+    debug_log('registering events: ' .. mod_name)
     for k,v in pairs(mod.__events) do 
-        debug_log('[HOTPATCH] registered event: ' .. event_names[k] .. ' (' .. mod_name .. ')')
+        debug_log('registered event: ' .. event_names[k] .. ' (' .. mod_name .. ')')
         script.on_event(k, on_event)
     end
     for k,v in pairs(mod.__ticks) do 
-        debug_log('[HOTPATCH] registered nth_tick event: ' .. k .. ' (' .. mod_name .. ')')
+        debug_log('registered nth_tick event: ' .. k .. ' (' .. mod_name .. ')')
         script.on_nth_tick(k, on_nth_tick)
     end
 end
 
 local function mod_init(mod_name)
-    debug_log('[HOTPATCH] running on_init: ' .. mod_name)
+    debug_log('running on_init: ' .. mod_name)
     local mod = loaded_mods[mod_name]
     if mod then
         if mod.__on_init then 
@@ -366,7 +447,7 @@ local function mod_init(mod_name)
 end
 
 local function mod_load(mod_name)
-    debug_log('[HOTPATCH] running on_load: ' .. mod_name)
+    debug_log('running on_load: ' .. mod_name)
     local mod = loaded_mods[mod_name]
     if mod then
         if mod.__on_load then 
@@ -377,7 +458,7 @@ local function mod_load(mod_name)
 end
 
 local function mod_configuration_changed(mod_name, config)
-    debug_log('[HOTPATCH] running on_configuration_changed: ' .. mod_name)
+    debug_log('running on_configuration_changed: ' .. mod_name)
     local mod = loaded_mods[mod_name]
     if mod then
         if mod.__on_configuration_changed then 
@@ -387,49 +468,49 @@ local function mod_configuration_changed(mod_name, config)
 end
 
 local function on_init()
-    debug_log('[HOTPATCH] initializing...')
+    debug_log('initializing...')
     global.mod_code = global.mod_code or {} --juuuuust in case
     global.mod_version = global.mod_version or {} --ditto
     global.globals = global.globals or {} --double ditto
     global.mod_files = global.mod_files or {} --triple ditto
-    debug_log('[HOTPATCH] installing and loading included mods...')
+    debug_log('installing and loading included mods...')
     for k, v in pairs(initial_code) do
         local n = initial_name[k]
         install_mod(n, initial_version[k], v, initial_files[k])
         run_mod(n)
         mod_init(n)
     end
-    debug_log('[HOTPATCH] installing and loading included mods... Complete!')
-    debug_log('[HOTPATCH] initializing... Complete!')
+    debug_log('installing and loading included mods... Complete!')
+    debug_log('initializing... Complete!')
 end
 
 local function on_load()
-    debug_log('[HOTPATCH] loading...')
-    debug_log('[HOTPATCH] loading included mods...')
+    debug_log('loading...')
+    debug_log('loading included mods...')
     for k, v in pairs(global.mod_code) do
         run_mod(k)
         mod_load(k)
     end
-    debug_log('[HOTPATCH] loading included mods... Complete!')
-    debug_log('[HOTPATCH] loading... Complete!')
+    debug_log('loading included mods... Complete!')
+    debug_log('loading... Complete!')
 end
 
 local function on_configuration_changed(config)
-    debug_log('[HOTPATCH] configuration change...')
+    debug_log('configuration change...')
     for k, v in pairs(loaded_mods) do
         mod_configuration_changed(k)
     end
-    debug_log('[HOTPATCH] configuration change... Complete!')
+    debug_log('configuration change... Complete!')
 end
 
 -- internal event subscription notification from mods
 -- technically this wastes some cycles by continuously re-subscribing over and over, might fix one day
 local function on_internal_notify(event)
     if event.name == 'on_nth_tick' then
-        debug_log('[HOTPATCH] adding nth_tick: ' .. event.tick .. ' (' .. event.mod .. ')')
+        debug_log('adding nth_tick: ' .. event.tick .. ' (' .. event.mod .. ')')
         script.on_nth_tick(event.nth_tick, on_nth_tick)
     else
-        debug_log('[HOTPATCH] adding event: ' .. event_names[event.name] .. ' (' .. event.mod .. ')')
+        debug_log('adding event: ' .. event_names[event.name] .. ' (' .. event.mod .. ')')
         script.on_event(event.event, on_event)
     end
 end
@@ -439,82 +520,49 @@ script.on_load(on_load)
 script.on_configuration_changed(on_configuration_changed)
 script.on_event(internal_notify, on_internal_notify)
 
--- mod update tools, WIP
--- these support multiple mods, as soon as the underlying code supports it
-
-local remote_interface = {}
-
---IMPORTANT: WHEN COPY PASTING CODE TO CONSOLE THE CODE MUST HAVE SINGLE LINE COMMENTS REMOVED
--- FACTORIO CONSOLE STRIPS LINEFEEDS WHICH MAKES ALL THE CODE BECOME COMMENTED OUT
---TODO: gate these behind admin permissions; if (game.player and game.player.admin) should work for console commands?
-
-remote_interface['install'] = function(mod_name, mod_version, mod_code, mod_files)
-    -- this installs a new mod and runs on_init, then registers events
-    -- Note that mods may expect that certain events haven't been called yet when their on_init is ran
-    -- This may prevent them from functioning properly, without manually calling the events they expect
-    -- examples: on_player_created
-    local caller = game.player or _ENV
-    if (caller == _ENV) or caller.admin then
-        if global.mod_code[mod_name] then
-            rcon.print('Error: mod already installed')
-            caller.print('Error: mod already installed')
-            return
-        end
-        install_mod(mod_name, mod_version, mod_code, mod_files)
-        run_mod(mod_name)
-        mod_init(mod_name)
-    end
-end
-
-remote_interface['update'] = function(mod_name, mod_version, mod_code, mod_files)
-    -- this updates an existing mod
-    -- the current mods events are de-registered, the new code is installed, on_load is triggered, and then events are registered
-    -- finally, the mod is informed of the update, so it can run migrations from the previous version
-    -- TODO: validation
-    local caller = game.player or _ENV
-    if (caller == _ENV) or caller.admin then
-        local old_version = global.mod_version[mod_name]
-        mod_reset_events(mod_name)
-        install_mod(mod_name, mod_version, mod_code, mod_files)
-        run_mod(mod_name)
-        mod_load(mod_name)
-
-        -- The mod must do any migrations here
-        -- TODO: notify all mods
-        mod_configuration_changed(mod_name, {mod_changes = {mod_name={old_version=old_version, new_version=mod_version}}})
-    end
-end
-
---TODO: most of this function
-remote_interface['clean'] = function(mod_name)
-    -- Removes ALL mod data and reinitializes
-    -- if the mod isnt designed for this, it will fail
-    -- because it doesn't remove things like surfaces, etc
-    local caller = game.player or _ENV
-    if (caller == _ENV) or caller.admin then
-        mod_reset(mod_name)
-        run_mod(mod_name)
-        mod_init(mod_name)
-    end
-end
-
-remote.add_interface('hotpatch', remote_interface)
-
---[[
-
-remote.call('hotpatch, 'install', 'test', '1.0.0', [===[ 
-script.on_event(defines.events.on_player_changed_position, function(e) 
-    game.print('changed position') 
-end
-]===]
-
-local updated_code = ....
-remote.call('hotpatch', 'update', 'test', '1.0.1', updated_code)
-
-
-]]
-
-
-return {
-    new_mod = new_mod
+--public API
+local mod_tools = {
+    -- most code should use new_mod
+    new_mod = new_mod, -- (name, version, code, files)
 }
+
+--private API, don't use this
+local mod_tools_internal = {
+    install_mod = install_mod,
+    install_mod_file = install_mod_file,
+    run_mod = run_mod,
+    uninstall_mod = uninstall_mod,
+
+    loaded_mods = loaded_mods,
+    mod_env = mod_env,
+
+    mod_reset = mod_reset,
+    mod_reset_events = mod_reset_events,
+    mod_init = mod_init,
+    mod_load = mod_load,
+    mod_configuration_changed = mod_configuration_changed,
+    
+    debug_log = debug_log
+}
+
+mt = {}
+mt.__index = mod_tools_internal
+mt.__newindex = function(t, k, v)
+    -- do nothing, read-only table
+end
+-- Don't let mods muck around
+mt.__metatable = {}
+setmetatable(mod_tools, mt)
+
+mt = {}
+mt.__index = function(t, k)
+    debug_log('WARNING: Invalid API access: ' .. k)
+end
+mt.__newindex = function(t, k, v)
+    -- do nothing
+end
+-- Don't let mods muck around
+mt.__metatable = {}
+setmetatable(mod_tools_internal, mt)
+
+return mod_tools
