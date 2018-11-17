@@ -15,10 +15,12 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 log('Hotpatch runtime initializing...')
 local util = require 'util'
 
+local debug_levels = {['disabled'] = -1, ['severe'] = 1, ['error'] = 2, ['warning'] = 3, ['info'] = 4, ['trace'] = 5, ['verbose'] = 6}
+
 -- configuration options; these should be exposed via API one day
-local debug_mode = true
-local debug_log_to_console_only = false
-local debug_log_to_RCON = true --only affects when log_to_console_only is in effect
+local debug_level = (tonumber(_ENV.debug_settings.level) or debug_levels[_ENV.debug_settings.level]) or 0
+local debug_log_to_console_only = _ENV.debug_settings.log_to_console_only
+local debug_log_to_RCON = _ENV.debug_settings.log_to_RCON --only affects when log_to_console_only is in effect
 local compat_mode = false -- enable some compatibility settings, which can help some mods load
 local strict_mode = false -- causes hotpatch to hard-stop on mods doing bad things
 
@@ -217,23 +219,31 @@ not-installed=mod not installed, cannot install file for mod that does not exist
 [hotpatch-mod-error]
 compilation-failed=compilation failed for mod
 execution-failed=execution failed for mod
+
+[test-pluralization]
+test=__1:(^1$)=single;(^[2-9]$)=plural singular digit;([1-2][0-9]$)=plural ends with double digit <30;(.*)=fallback case%; plural with embedded %;;__
 ]]
 
 local function build_locale(ini)
     local t = {}
     local section = ''
     local temp
-    -- for each non-empty line do
+    
     -- line must end with a linefeed - single line file with no LF will fail
-    for l in string.gmatch(ini, '\r*\n*(.-)\r*\n+') do
+    if not ini:match('[\r\n]+$') then
+        ini = ini .. '\n'
+    end
+    
+    -- for each non-empty line do
+    for l in ini:gmatch('[\r\n]*(.-)[\r\n]+') do
         -- header?
-        temp = string.match(l, '^%[(.-)%]$')
+        temp = l:match('^%[(.-)%].*$')
         if temp then
             section = temp
             temp = nil
         else
             --key=value
-            local key, value = string.match(l, '^(.-)=(.+)$')
+            local key, value = l:match('^(.-)=(.+)$')
             t[table.concat{section, '.', key}] = value
         end
     end
@@ -242,31 +252,56 @@ end
 
 local static_locale = build_locale(static_cfg)
 
-local function static_translate(t)
+local function static_translate(t, recursive)
     -- only translate tables
     if type(t) ~= 'table' then return t end
     -- only translate tables that have a string as the first item
     local k = t[1]
     if type(k) ~= 'string' then return t end
     local v
-    -- make a copy, don't destroy the original table
-    t = table.deepcopy(t)
+    -- make a copy, don't destroy the original table, after we copy we can translate in place
+    if not recursive then
+        t = table.deepcopy(t)
+    end
     -- translate any arguments as well
     for i = 2, #t do
         v = t[i]
         if type(v) == 'table' then
-            t[i] = static_translate(v)
+            t[i] = static_translate(v, true)
         end
     end
     -- special case: whitespace token causes concatenation with that token
     -- slightly better than factorio, where only '' is supported
     if k:find('^%s*$') then table.remove(t, 1) return table.concat(t, k) end
     local pattern = static_locale[k]
-    -- if not translatable return normal table ref
-    --if not pattern then return t end
+    -- if not translatable return normal table ref; factorio does instead following:
+    -- if not pattern then return 'Unknown key: ' .. k end
     if not pattern then return t end
-    -- substitution of parameters
-    return (pattern:gsub('__(%d)__', function(s) return tostring(t[tonumber(s)+1]) end))
+    -- substitution of parameters: use literal value of parameter n
+    -- __n__
+    local result = (pattern:gsub('__(%d+)__', function(s) return tostring(t[tonumber(s)+1]) end))
+    
+    
+    local function escape(s)
+        return (s:gsub('([%^%$%(%)%%%.%[%]%*%+%-%?])', '%%%1'))
+    end
+
+    local function unescape(s)
+        return (s:gsub('(%%)', ''))
+    end
+    
+    -- re-substitution engine: match value of parameter n to provide additional translation; use for pluralization
+    -- __n:(pattern-1)=substitution-1;(pattern-2)=substitution-2;...(pattern-i)=substitution-i;__
+    for p, m in result:gmatch('__(%d+)(:.-;)__') do
+        for x, y in m:gmatch('%((.-)%)=(.-[^%%]);') do
+            if t[tonumber(p)+1]:match(x) then 
+                result = result:gsub(table.concat{'__', p, escape(m), '__'}, unescape(y))
+                break
+            end
+        end
+    end
+
+    return result
 end
 
 -- override print to make it support our translation efforts
@@ -298,29 +333,37 @@ local log = function(...)
 end
 
 -- logs localized data
-local function debug_log(message, mod_name, level)
-    if debug_mode then 
-        if not level then level = 2 end
-        local di = debug.getinfo(level)
+local function debug_log(message, mod_name, stack_level)
+    if debug_level > -1 then 
+        if not stack_level then stack_level = 2 end
+        local di = debug.getinfo(stack_level)
         local line = di.currentline
         local file = (di.source:gsub('%@.*/', ''))
         local class = 'hotpatch.core-info'
+        local severity
 		if type(message) == 'table' then
-            local severity = message[1]:match('.-%-([^%-]*)%.')
+            severity = message[1]:match('.-%-([^%-]*)%.')
             if not severity then
                 severity = message[1]:match('.-%-.-%-(.*)%.')
+                if not severity then
+                    severity = 'always'
+                end
             end
             class = table.concat{'hotpatch', '.', ((mod_name and 'mod') or 'core'), '-', severity}
-        end
-		--TODO: support multiple log levels
-        if debug_log_to_console_only then
-            if debug_log_to_RCON then
-                rcon.print{class, file, line, message, mod_name}
-            end
-            print{class, file, line, message, mod_name}
-
         else
-            log{class, file, line, message, mod_name}
+            severity = 'always'
+        end
+		local level = ((severity == 'always') and 0) or debug_levels[severity]
+        if debug_level >= level then
+            if debug_log_to_console_only then
+                if debug_log_to_RCON then
+                    rcon.print{class, file, line, message, mod_name}
+                end
+                print{class, file, line, message, mod_name}
+
+            else
+                log{class, file, line, message, mod_name}
+            end
         end
     end
 end
@@ -659,6 +702,9 @@ load_mod = function(installed_index)
                         mod_obj.loaded_files[path] = result or true
                         env.package._current_path_in_package = oldbase
                         return mod_obj.loaded_files[path]
+                    else
+                        debug_log(err, nil, 3)
+                        error(err)
                     end
                 end
                 debug_log({'hotpatch-mod-info.load-core-lib', path}, mod_name)
@@ -1112,6 +1158,7 @@ local mod_tools_internal = setmetatable({
     
     console = console,
     debug_log = debug_log,
+    loaded_mods = loaded_mods,
 },{
     __index = function(t, k)
         debug_log({'hotpatch-core-warning.invalid-API-access', k}, nil, 3)
@@ -1127,8 +1174,8 @@ local mod_tools_internal = setmetatable({
 local mod_tools = setmetatable({
     -- most code should use new_mod
     static_mod = static_mod, -- (name, version, code, files)
-    set_debug_mode = function(enabled)
-        debug_mode = enabled
+    set_debug_level = function(level)
+        debug_level = tonumber(_ENV.debug_settings.level) or debug_levels[_ENV.debug_settings.level]
     end,
     restore_log = function()
         log = real_log

@@ -16,6 +16,12 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 -- Version 1.1 alpha
 -- probably some performance improvements to be made
 
+_ENV.debug_settings = {
+    level = 'warning',
+    log_to_console_only = false,
+    log_to_RCON = false
+}
+
 local hotpatch_tools = require 'hotpatch.mod-tools'
 local hotpatch_remote = require 'hotpatch.remote-interface'
 local hotpatch_commands = require 'hotpatch.commands'
@@ -53,5 +59,7 @@ hotpatch_tools.static_mod('require-test', '1.0.0', [===[
 --]]
 
 -- end of mod code
+
+
 
 hotpatch_tools.restore_log()

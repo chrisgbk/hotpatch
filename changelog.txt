@@ -1,4 +1,13 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.1.2
+Date: 9. 6. 2018
+  Bugfix:
+    - Fixed behaviour of require() specifically when an error occurs in the file being required
+    - Fixed remote interface errors from refactoring
+    - Fixed private API not exposing the internal table needed for remote interface/commands to do useful things
+  Info:
+    - Added support for log levels
+---------------------------------------------------------------------------------------------------
 Version: 1.1.1
 Date: 4. 6. 2018
   Bugfix:

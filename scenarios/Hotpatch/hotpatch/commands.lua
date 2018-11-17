@@ -43,6 +43,7 @@ local mod_on_configuration_changed = hotpatch_tools.mod_on_configuration_changed
 
 local console = hotpatch_tools.console
 local debug_log = hotpatch_tools.debug_log
+local loaded_mods = hotpatch_tools.loaded_mods
 
 local sub_commands = {
     help = function(player, param)

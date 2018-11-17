@@ -43,7 +43,7 @@ local mod_on_configuration_changed = hotpatch_tools.mod_on_configuration_changed
 
 local console = hotpatch_tools.console
 local debug_log = hotpatch_tools.debug_log
-
+local loaded_mods = hotpatch_tools.loaded_mods
 
 local remote_interface = {}
 
@@ -81,10 +81,10 @@ remote_interface['install'] = function(mod_name, mod_version, mod_code, mod_file
                 loaded_index = find_loaded_mod(mod_name)
                 if loaded_index then
                     run_mod(loaded_index)
-                    mod_init(loaded_index)
+                    mod_on_init(loaded_index)
                     -- TODO: notify all mods
                     -- TODO: determine vanilla behaviour and replicate it
-                    mod_configuration_changed(loaded_index, {mod_changes = {mod_name={new_version=mod_version}}})
+                    mod_on_configuration_changed(loaded_index, {mod_changes = {mod_name={new_version=mod_version}}})
                 else
                 end
             else
@@ -118,10 +118,10 @@ remote_interface['run'] = function(mod_name)
         
         if loaded_index then
             run_mod(loaded_index)
-            mod_init(loaded_index)
+            mod_on_init(loaded_index)
             -- TODO: notify all mods
             -- TODO: determine vanilla behaviour and replicate it
-            mod_configuration_changed(loaded_index, {mod_changes = {mod_name={new_version=version}}})
+            mod_on_configuration_changed(loaded_index, {mod_changes = {mod_name={new_version=version}}})
         end    
     else
         caller.print('You must be an admin to run this command.')
@@ -147,15 +147,15 @@ remote_interface['update'] = function(mod_name, mod_version, mod_code, mod_files
         load_mod(installed_index)
         run_mod(installed_index)
         if old_version then
-            mod_load(installed_index)
+            mod_on_load(installed_index)
             -- The mod must do any migrations here
             -- TODO: notify all mods
-            mod_configuration_changed(installed_index, {mod_changes = {mod_name={old_version=old_version, new_version=mod_version}}})
+            mod_on_configuration_changed(installed_index, {mod_changes = {mod_name={old_version=old_version, new_version=mod_version}}})
         else
             -- first time install
-            mod_init(installed_index)
+            mod_on_init(installed_index)
             -- TODO: notify all mods
-            mod_configuration_changed(installed_index, {mod_changes = {mod_name={new_version=mod_version}}})
+            mod_on_configuration_changed(installed_index, {mod_changes = {mod_name={new_version=mod_version}}})
         end
     else
         caller.print('You must be an admin to run this command.')
@@ -179,8 +179,8 @@ remote_interface['clean'] = function(mod_name)
     if caller.admin then
         mod_reset(mod_name)
         run_mod(mod_name)
-        mod_init(mod_name)
-        mod_configuration_changed(mod_name, {mod_changes = {mod_name={new_version=mod_version}}})
+        mod_on_init(mod_name)
+        mod_on_configuration_changed(mod_name, {mod_changes = {mod_name={new_version=mod_version}}})
     else
         caller.print('You must be an admin to run this command.')
     end
