@@ -1,5 +1,5 @@
 local hotpatch_tools = require 'hotpatch.mod-tools'
-hotpatch_tools.static_mod('hotpatch-remote-interface', '1.0.0', [===[
+hotpatch_tools.static_mod('hotpatch-remote-interface', '1.0.1', [===[
 --[[
 
 Copyright 2018 Chrisgbk
@@ -175,6 +175,7 @@ remote_interface['update'] = function(mod_name, mod_version, mod_code, mod_files
             caller.print('compilation failed for mod ' .. mod_name)
             return
         end
+        loaded_index = find_loaded_mod(mod_name)
         if not run_mod(loaded_index) then
             caller.print('execution failed for mod ' .. mod_name)
             return
