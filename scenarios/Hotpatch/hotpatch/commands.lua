@@ -44,6 +44,30 @@ local mod_on_configuration_changed = hotpatch_tools.mod_on_configuration_changed
 local console = hotpatch_tools.console
 local debug_log = hotpatch_tools.debug_log
 
-local commands = {}
+local sub_commands = {
+    help = function(player, param)
+    
+    end
+}
 
-return commands
+local admin_commands = {
+
+}
+
+_ENV.commands.add_command('hotpatch', 'Commands for hotpatch. Run /hotpatch help for details.', function(e)
+    local caller = (e.player_index and game.players[e.player_index]) or console
+    local sub_command, rest = parameter:match('(.-)%s(.*)')
+
+    local f = sub_commands[sub_command]
+    if f then f(e.player_index, rest) end
+    if caller.admin then
+        f = admin_commands[sub_command]
+        if f then f(e.player_index, rest) end
+    end
+end)
+
+
+return {
+    sub_commands = sub_commands,
+    admin_commands = admin_commands
+}

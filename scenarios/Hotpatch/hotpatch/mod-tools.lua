@@ -653,10 +653,13 @@ load_mod = function(installed_index)
                 local file = global.mods[installed_index].files[path]
                 if file then
                     debug_log({'hotpatch-mod-info.load-require', path}, mod_name)
-                    mod_obj.loaded_files[path] = load(file, 'hotpatch require ' .. path .. ' (' .. mod_name .. ')', 'bt', env)
-                    mod_obj.loaded_files[path]()
-                    env.package._current_path_in_package = oldbase
-                    return mod_obj.loaded_files[path]
+                    local code, err = load(file, 'hotpatch require ' .. path .. ' (' .. mod_name .. ')', 'bt', env)
+                    if code then
+                        local result = code()
+                        mod_obj.loaded_files[path] = result or true
+                        env.package._current_path_in_package = oldbase
+                        return mod_obj.loaded_files[path]
+                    end
                 end
                 debug_log({'hotpatch-mod-info.load-core-lib', path}, mod_name)
                 return package.loaded[path]
