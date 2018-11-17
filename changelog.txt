@@ -1,4 +1,11 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.1.3
+Date: 13. 6. 2018
+  Bugfix:
+    - Fixed behaviour of require() specifically when a file in a folder is required before a lualib is required
+  Info:
+    - Logging enhancements
+---------------------------------------------------------------------------------------------------
 Version: 1.1.2
 Date: 9. 6. 2018
   Bugfix:

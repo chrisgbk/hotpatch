@@ -15,12 +15,14 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 log('Hotpatch runtime initializing...')
 local util = require 'util'
 
-local debug_levels = {['disabled'] = -1, ['severe'] = 1, ['error'] = 2, ['warning'] = 3, ['info'] = 4, ['trace'] = 5, ['verbose'] = 6}
+local debug_levels = {['disabled'] = -1, ['severe'] = 1, ['error'] = 2, ['warning'] = 3, ['info'] = 4, ['verbose'] = 5, ['trace'] = 6}
 
 -- configuration options; these should be exposed via API one day
 local debug_level = (tonumber(_ENV.debug_settings.level) or debug_levels[_ENV.debug_settings.level]) or 0
 local debug_log_to_console_only = _ENV.debug_settings.log_to_console_only
 local debug_log_to_RCON = _ENV.debug_settings.log_to_RCON --only affects when log_to_console_only is in effect
+local debug_log_on_tick = _ENV.debug_settings.log_on_tick
+
 local compat_mode = false -- enable some compatibility settings, which can help some mods load
 local strict_mode = false -- causes hotpatch to hard-stop on mods doing bad things
 
@@ -130,16 +132,19 @@ for k,v in pairs(defines.events) do
 end
 
 -- This scenario contains an embedded locale, but it's unavailable until this file finishes loading
+-- ie: calls to log{...} will fail right now, but will work in events
 -- Rseding91 doesn't want to fix it (https://forums.factorio.com/viewtopic.php?f=23&t=60767)
 -- I'll make it work myself ¯\_(ツ)_/¯
 local static_cfg = [[
 [hotpatch]
-core-error=[HOTPATCH@__1__:__2__] ERROR: __3__
-mod-error=[HOTPATCH@__1__:__2__][__4__] ERROR: __3__
-core-warning=[HOTPATCH@__1__:__2__] WARNING: __3__
-mod-warning=[HOTPATCH@__1__:__2__][__4__] WARNING: __3__
-core-info=[HOTPATCH@__1__:__2__] INFO: __3__
-mod-info=[HOTPATCH@__1__:__2__][__4__] INFO: __3__
+log=[HOTPATCH@__1__:__2__] __3__
+log-mod=[HOTPATCH@__1__:__2__][__4__] __3__
+severe=SEVERE ERROR: __1__
+error=ERROR: __1__
+warning=WARNING: __1__
+info=INFO: __1__
+verbose=INFO: __1__
+trace=TRACE: __1__
 
 [hotpatch-info]
 runtime-init=Hotpatch runtime initializing...
@@ -150,8 +155,6 @@ nil-var-access=_ENV nil variable access: __1__
 nil-var-assignment=_ENV variable assignment: __1__
 must-be-admin=You must be an admin to run this command
 remote-installing=installing remote interface
-
-[hotpatch-core-info]
 on-init=initializing...
 on-load=loading...
 on-configuration-changed=mod configuration changed...
@@ -159,16 +162,6 @@ installing-included-mods=installing included mods...
 loading-installed-mods=loading installed mods...
 loading-libs=loading Factorio.data.core.lualib...
 loading-library=loading library: __1__
-event-processing=processing event __1__...
-nth-tick-event-processing=processing nth_tick event __1__...
-nth-tick-handler-added=adding nth_tick handler: __1__
-nth-tick-handler-removed=adding nth_tick handler: __1__
-on-tick-handler-added=adding nth_tick handler: __1__
-on-tick-handler-removed=adding nth_tick handler: __1__
-on-event-handler-added=adding nth_tick handler: __1__
-on-event-handler-removed=adding nth_tick handler: __1__
-
-[hotpatch-mod-info]
 uninstalling=Uninstalling mod...
 installing=Installing version __1__...
 installing-file=Installing file __1__...
@@ -182,24 +175,29 @@ load-core-lib=loading from Factorio.data.core.lualib: __1__...
 loading=loading...
 unloading=unloading...
 running=running...
+
+[hotpatch-trace]
 event-registering=registering events...
 tick-event-registered=registered on_tick event...
 event-registered=registered event __1__...
 nth-tick-event-registered=registered nth_tick event __1__...
 event-running=running event __1__...
 nth-tick-event-running=running nth_event __1__...
-on-init=running on_init...
-on-load=running on_load...
-on-configuration-changed=running on_configuration_changed...
+mod-on-init=running on_init...
+mod-on-load=running on_load...
+mod-on-configuration-changed=running on_configuration_changed...
 adding-event=adding event __1__
 adding-nth-tick-event=adding nth_tick event __1__
+event-processing=processing event __1__...
+nth-tick-event-processing=processing nth_tick event __1__...
+nth-tick-handler-added=adding nth_tick handler: __1__
+nth-tick-handler-removed=adding nth_tick handler: __1__
+on-tick-handler-added=adding nth_tick handler: __1__
+on-tick-handler-removed=adding nth_tick handler: __1__
+on-event-handler-added=adding nth_tick handler: __1__
+on-event-handler-removed=adding nth_tick handler: __1__
 
 [hotpatch-warning]
-
-[hotpatch-core-warning]
-invalid-API-access=Invalid API access: __1__
-
-[hotpatch-mod-warning]
 contains-comments=mod code contains comments!
 contains-comments-no-lf=mod contains comments and no linefeed!
 contains-comments-console=comments from console will comment out the entire code!
@@ -212,11 +210,8 @@ already-exists=mod already exists
 reinstalling=reinstalling mod in-place
 
 [hotpatch-error]
-
-[hotpatch-core-error]
+invalid-API-access=Invalid API access: __1__
 not-installed=mod not installed, cannot install file for mod that does not exist
-
-[hotpatch-mod-error]
 compilation-failed=compilation failed for mod
 execution-failed=execution failed for mod
 
@@ -339,7 +334,8 @@ local function debug_log(message, mod_name, stack_level)
         local di = debug.getinfo(stack_level)
         local line = di.currentline
         local file = (di.source:gsub('%@.*/', ''))
-        local class = 'hotpatch.core-info'
+        local class = 'hotpatch.info'
+        local log_type = (mod_name and 'hotpatch.log-mod') or 'hotpatch.log'
         local severity
 		if type(message) == 'table' then
             severity = message[1]:match('.-%-([^%-]*)%.')
@@ -349,7 +345,7 @@ local function debug_log(message, mod_name, stack_level)
                     severity = 'always'
                 end
             end
-            class = table.concat{'hotpatch', '.', ((mod_name and 'mod') or 'core'), '-', severity}
+            class = table.concat{'hotpatch', '.', severity}
         else
             severity = 'always'
         end
@@ -357,12 +353,12 @@ local function debug_log(message, mod_name, stack_level)
         if debug_level >= level then
             if debug_log_to_console_only then
                 if debug_log_to_RCON then
-                    rcon.print{class, file, line, message, mod_name}
+                    rcon.print{log_type, file, line, {class, message}, mod_name}
                 end
-                print{class, file, line, message, mod_name}
+                print{log_type, file, line, {class, message}, mod_name}
 
             else
-                log{class, file, line, message, mod_name}
+                log{log_type, file, line, {class, message}, mod_name}
             end
         end
     end
@@ -386,7 +382,7 @@ setmetatable(_ENV, {
 debug_log({'hotpatch-info.metatable-installed'})
 
 -- load all possible libraries
-debug_log({'hotpatch-core-info.loading-libs'})
+debug_log({'hotpatch-info.loading-libs'})
 
 local libraries = {
     'camera',
@@ -402,11 +398,11 @@ local libraries = {
 }
 
 for k, v in pairs(libraries) do
-    debug_log({'hotpatch-core-info.loading-library', v})
+    debug_log({'hotpatch-info.loading-library', v})
 	loaded_libraries[k] = require(v)
 end
 
-debug_log({'hotpatch-info.complete', {'hotpatch-core-info.loading-libs'}})
+debug_log({'hotpatch-info.complete', {'hotpatch-info.loading-libs'}})
 
 find_installed_mod = function(mod_name)
     for k, v in pairs(global.mods) do
@@ -439,7 +435,7 @@ uninstall_mod = function(mod_name)
     end
         
 
-    debug_log({'hotpatch-mod-info.uninstalling', mod_name})
+    debug_log({'hotpatch-info.uninstalling', mod_name})
     
     table.remove(global.mods, index)
 end
@@ -447,15 +443,16 @@ end
 install_mod_file = function(mod_name, mod_file, mod_file_code)
     local index = find_installed_mod(mod_name)
     if not index then
-        debug_log({'hotpatch-core-error.not-installed'})
+        debug_log({'hotpatch-error.not-installed'})
         return
     end
     local mod = global.mods[index]
     
-    debug_log({'hotpatch-mod-info.installing-file', mod_file}, mod_name)
+    debug_log({'hotpatch-info.installing-file', mod_file}, mod_name)
 
     mod_file = mod_file:gsub('/', '.')
     mod_file = mod_file:gsub('\\', '.')
+    mod_file_code = mod_file_code:gsub('\t', '  ')
     mod.files[mod_file] = mod_file_code
 end
 
@@ -469,15 +466,17 @@ install_mod = function(mod_name, mod_version, mod_code, mod_files)
         --next free index
         table.insert(global.mods, mod)
     end
-    debug_log({'hotpatch-mod-info.installing', mod_version}, mod_name)
+    debug_log({'hotpatch-info.installing', mod_version}, mod_name)
     if mod_code:find('--', 1, true) then
 
-        debug_log({'hotpatch-mod-warning.contains-comments'}, mod_name)
+        debug_log({'hotpatch-warning.contains-comments'}, mod_name)
         if not mod_code:find("\n", 1, true) then
-            debug_log({'hotpatch-mod-warning.contains-comments-no-lf'}, mod_name)
+            debug_log({'hotpatch-warning.contains-comments-no-lf'}, mod_name)
         end
-        debug_log({'hotpatch-mod-warning.contains-comments-console'}, mod_name)
+        debug_log({'hotpatch-warning.contains-comments-console'}, mod_name)
     end
+    
+    mod_code = mod_code:gsub('\t', '  ')
 
     mod.name = mod_name
     mod.files = mod.files or {}
@@ -518,7 +517,7 @@ load_mod = function(installed_index)
             loaded_files = {}, -- list of files loaded by require() that were installed into the virtual file system
         }
         
-        debug_log({'hotpatch-mod-info.script-shim'}, mod_name)
+        debug_log({'hotpatch-info.script-shim'}, mod_name)
         --mods private script table/shim
         local mod_script = {}
 
@@ -606,7 +605,7 @@ load_mod = function(installed_index)
             return script.mod_name()
         end
         
-        debug_log({'hotpatch-mod-info.setting-env'}, mod_name)
+        debug_log({'hotpatch-info.setting-env'}, mod_name)
         -- mods private env
         local env = mod_obj.env
         -- mods private package
@@ -639,7 +638,7 @@ load_mod = function(installed_index)
         env['remote'] = {
             add_interface = function(name, functions)
                 if remote.interfaces[name] then
-                    debug_log({'hotpatch-mod-warning.remote-interface-exists', name}, mod_name)
+                    debug_log({'hotpatch-warning.remote-interface-exists', name}, mod_name)
                     remote.remove_interface(name)
                 end
                 remote.add_interface(name, functions)
@@ -658,7 +657,7 @@ load_mod = function(installed_index)
         env['commands'] = {
             add_command = function(name, help, func)
                 if commands.commands[name] then
-                    debug_log({'hotpatch-mod-warning.command-exists', name}, mod_name)
+                    debug_log({'hotpatch-warning.command-exists', name}, mod_name)
                     commands.remove_command(name)
                 end
                 commands.add_command(name, help, func)
@@ -685,7 +684,7 @@ load_mod = function(installed_index)
                 path = env.package._current_path_in_package .. path
             end
             if mod_obj.loaded_files[path] then
-                debug_log({'hotpatch-mod-info.cached-load-require', path}, mod_name)
+                debug_log({'hotpatch-info.cached-load-require', path}, mod_name)
                 return mod_obj.loaded_files[path]
             else
                 local oldbase = env.package._current_path_in_package
@@ -695,7 +694,7 @@ load_mod = function(installed_index)
                 end
                 local file = global.mods[installed_index].files[path]
                 if file then
-                    debug_log({'hotpatch-mod-info.load-require', path}, mod_name)
+                    debug_log({'hotpatch-info.load-require', path}, mod_name)
                     local code, err = load(file, 'hotpatch require ' .. path .. ' (' .. mod_name .. ')', 'bt', env)
                     if code then
                         local result = code()
@@ -707,7 +706,8 @@ load_mod = function(installed_index)
                         error(err)
                     end
                 end
-                debug_log({'hotpatch-mod-info.load-core-lib', path}, mod_name)
+                debug_log({'hotpatch-info.load-core-lib', path}, mod_name)
+                env.package._current_path_in_package = oldbase
                 return package.loaded[path]
             end
         end
@@ -737,23 +737,24 @@ load_mod = function(installed_index)
         setmetatable(env, mt)
 
         --load/run code
-        debug_log({'hotpatch-mod-info.loading'}, mod_name)
+        debug_log({'hotpatch-info.loading'}, mod_name)
         
         local mod_code, message = load(mod.code, 'hotpatch loader (' .. mod_name .. ')', 'bt', env)
         if not mod_code then
-            debug_log({'hotpatch-mod-error.compilation-failed'}, mod_name)
+            debug_log({'hotpatch-error.compilation-failed'}, mod_name)
             if game and game.player then
-                game.player.print({'hotpatch-mod-error.compilation-failed', mod_name})
                 game.player.print(message)
             end
             debug_log(message, mod_name)
-            return
+            return false
         end
 
         mod_obj.code = mod_code
         mod_obj.loaded = true
         table.insert(loaded_mods, mod_obj)
+        return true
     end
+    return false
 end
 
 unload_mod = function(loaded_index)
@@ -765,8 +766,10 @@ unload_mod = function(loaded_index)
     local mod_name = mod.name
     -- TODO
     -- stop mod running, unregister handlers from being called
-    debug_log({'hotpatch-mod-info.unloading'}, mod_name)
+    debug_log({'hotpatch-info.unloading'}, mod_name)
     -- TODO:
+    mod.loaded = false
+    mod.running = false
     table.remove(loaded_mods, loaded_index)
 end
 
@@ -792,7 +795,7 @@ reset_mod_events = function(loaded_index)
     local loaded_index = find_loaded_mod(mod_name)
     
     if not loaded_index then
-        debug_log({'hotpatch-mod-warning.reset-events-not-running'}, mod_name)
+        debug_log({'hotpatch-warning.reset-events-not-running'}, mod_name)
     else 
         local loaded_mod = loaded_mods[loaded_index]
         loaded_mod.on_event = {}
@@ -813,24 +816,21 @@ run_mod = function(loaded_index)
         if strict_mode then
            mod.env.global = {}
         end
-        debug_log({'hotpatch-mod-info.running'}, mod_name)
+        debug_log({'hotpatch-info.running'}, mod_name)
         
         local success, result = xpcall(mod.code, debug.traceback)
         if not success then
-            debug_log({'hotpatch-mod-error.execution-failed'}, mod_name)
+            debug_log({'hotpatch-error.execution-failed'}, mod_name)
             debug_log(result, mod_name)
             --local caller = (game and game.player) or console
             if game and game.player then
-                game.player.print({'hotpatch-mod-error.execution-failed'})
                 game.player.print(result)
             end
             unload_mod(loaded_index)
             
-            return
+            return false
         end
         
-        
-        mod.running = true
             
         if strict_mode then
             if mod.env.global ~= {} then
@@ -838,8 +838,9 @@ run_mod = function(loaded_index)
             end
            mod.env.global = old_global
         end
-
-        debug_log({'hotpatch-info.complete', {'hotpatch-mod-info.running'}}, mod_name)
+        
+        mod.running = true
+        debug_log({'hotpatch-info.complete', {'hotpatch-info.running'}}, mod_name)
         
         --load complete, start notifying on event subscriptions
         if not compat_mode then
@@ -871,31 +872,49 @@ run_mod = function(loaded_index)
                 end
             end
         end
+        return true
     end
+    return false
 end
 
 -- Note: might be able to optimize this a bit
 -- event handlers to call into mods requested event handlers
 on_event = function(event)
     local event_name = (event_names[event.name] or event.name)
-    debug_log({'hotpatch-core-info.event-processing', event_name})
+    local f
+    debug_log({'hotpatch-trace.event-processing', event_name})
     for k, v in pairs(loaded_mods) do
-        local f = v.on_event[event.name]
+        f = v.on_event[event.name]
         if f then 
-            debug_log({'hotpatch-mod-info.event-running', event_name}, v.name)
+            debug_log({'hotpatch-trace.event-running', event_name}, v.name)
             f(event)
         end
     end
 end
 
-on_nth_tick = function(event)
-    local tick = event.nth_tick
-    debug_log({'hotpatch-core-info.nth-tick-event-processing', tick})
-    for k, v in pairs(loaded_mods) do
-        local f = v.on_nth_tick[event.nth_tick]
-        if f then 
-            debug_log({'hotpatch-mod-info.nth-tick-event-running', tick}, v.name)
-            f(event)
+if debug_log_on_tick then
+    on_nth_tick = function(event)
+        local tick = event.nth_tick
+        local f
+        debug_log({'hotpatch-trace.nth-tick-event-processing', tick})
+        for k, v in pairs(loaded_mods) do
+            f = v.on_nth_tick[event.nth_tick]
+            if f then 
+                debug_log({'hotpatch-trace.nth-tick-event-running', tick}, v.name)
+                f(event)
+            end
+        end
+    end
+else
+    on_nth_tick = function(event)
+        local tick = event.nth_tick
+        local f
+        for k, v in pairs(loaded_mods) do
+            f = v.on_nth_tick[event.nth_tick]
+            if f then 
+                debug_log({'hotpatch-trace.nth-tick-event-running', tick}, v.name)
+                f(event)
+            end
         end
     end
 end
@@ -914,18 +933,18 @@ register_mod_events = function(loaded_index)
 
     local mod = loaded_mods[loaded_index]
     local mod_name = mod.name
-    debug_log({'hotpatch-mod-info.event-registering'}, mod_name)
+    debug_log({'hotpatch-trace.event-registering'}, mod_name)
     if mod.on_tick then
-        debug_log({'hotpatch-mod-info.tick-event-registered'}, mod_name)
+        debug_log({'hotpatch-trace.tick-event-registered'}, mod_name)
         script.on_event(defines.events.on_tick, on_tick)
     end
     for k,v in pairs(mod.on_event) do 
         local event_name = (event_names[k] or k)
-        debug_log({'hotpatch-mod-info.event-registered', event_name}, mod_name)
+        debug_log({'hotpatch-trace.event-registered', event_name}, mod_name)
         script.on_event(k, on_event)
     end
     for k,v in pairs(mod.on_nth_tick) do 
-        debug_log({'hotpatch-mod-info.nth-tick-event-registered', k}, mod_name)
+        debug_log({'hotpatch-trace.nth-tick-event-registered', k}, mod_name)
         script.on_nth_tick(k, on_nth_tick)
     end
 end
@@ -934,35 +953,56 @@ mod_on_init = function(loaded_index)
     local mod = loaded_mods[loaded_index]
     
     if mod then
-        debug_log({'hotpatch-mod-info.on-init'}, mod.name)
+        debug_log({'hotpatch-info.on-init'}, mod.name)
         if mod.on_init then 
-            mod.on_init()
+            local success, result = xpcall(mod.on_init, debug.traceback)
+            if not success then
+                debug_log('on_init failed for ' .. mod.name)
+                unload_mod(loaded_index)
+                return false
+            end
         end
         register_mod_events(loaded_index)
+        return true
     end
+    return false
 end
 
 mod_on_load = function(loaded_index)
     local mod = loaded_mods[loaded_index]
     
     if mod then
-        debug_log({'hotpatch-mod-info.on-load'}, mod.name)
+        debug_log({'hotpatch-info.on-load'}, mod.name)
         if mod.on_load then 
-            mod.on_load()
+            local success, result = xpcall(mod.on_load, debug.traceback)
+            if not success then
+                debug_log('on_load failed for ' .. mod.name)
+                unload_mod(loaded_index)
+                return false
+            end
         end
         register_mod_events(loaded_index)
+        return true
     end
+    return false
 end
 
 mod_on_configuration_changed = function(loaded_index, config)
     local mod = loaded_mods[loaded_index]
     
     if mod then
-        debug_log({'hotpatch-mod-info.on-configuration-changed'}, mod.name)
+        debug_log({'hotpatch-info.on-configuration-changed'}, mod.name)
         if mod.on_configuration_changed then 
-            mod.on_configuration_changed(config)
+            local success, result = xpcall(mod.on_configuration_changed, debug.traceback, config)
+            if not success then
+                debug_log('on_configuration_changed failed for ' .. mod.name)
+                unload_mod(loaded_index)
+                return false
+            end
         end
+        return true
     end
+    return false
 end
 
 -- callbacks from mods to tell hotpatch when to enable handlers
@@ -977,11 +1017,11 @@ register_on_tick = function(mod_name)
             break 
         end
     end
-    debug_log({'hotpatch-mod-info.on-tick-event-registered'}, mod_name)
+    debug_log({'hotpatch-trace.on-tick-event-registered'}, mod_name)
     if found_event then
-        debug_log({'hotpatch-core-info.on-tick-handler-added'})
+        debug_log({'hotpatch-trace.on-tick-handler-added'})
     else
-        debug_log({'hotpatch-core-info.on-tick-handler-removed'})
+        debug_log({'hotpatch-trace.on-tick-handler-removed'})
     end
 end
 
@@ -995,12 +1035,12 @@ register_nth_tick = function(mod_name, nth_tick)
             break 
         end
     end
-    debug_log({'hotpatch-mod-info.nth-tick-event-registered', nth_tick}, mod_name)
+    debug_log({'hotpatch-trace.nth-tick-event-registered', nth_tick}, mod_name)
     if found_event then
-        debug_log({'hotpatch-core-info.nth-tick-handler-added', nth_tick})
+        debug_log({'hotpatch-trace.nth-tick-handler-added', nth_tick})
         script.on_nth_tick(event.nth_tick, on_nth_tick)
     else
-        debug_log({'hotpatch-core-info.nth-tick-handler-removed', nth_tick})
+        debug_log({'hotpatch-trace.nth-tick-handler-removed', nth_tick})
         script.on_nth_tick(event.nth_tick, nil)
     end
 end
@@ -1011,17 +1051,17 @@ register_event = function(mod_name, event_name)
         local f = v.on_event[event_name]
         if f then found_event = true break end
     end
-    debug_log({'hotpatch-mod-info.on-event-registered', nth_tick}, mod_name)
+    debug_log({'hotpatch-trace.on-event-registered', nth_tick}, mod_name)
     if found_event then
         if script.get_event_handler(event_name) then
             -- handler already installed
             return
         else
-           debug_log({'hotpatch-core-info.on-event-handler-added', (event_names[event_name] or event_name)})
+           debug_log({'hotpatch-trace.on-event-handler-added', (event_names[event_name] or event_name)})
            script.on_event(event.event, on_event)
         end
     else
-        debug_log({'hotpatch-core-info.on-event-handler-added', (event_names[event_name] or event_name)})
+        debug_log({'hotpatch-trace.on-event-handler-added', (event_names[event_name] or event_name)})
         script.on_event(event.event, nil)
     end
 end
@@ -1029,11 +1069,11 @@ end
 -- Core registration
 
 on_init = function()
-    debug_log({'hotpatch-core-info.on-init'})
+    debug_log({'hotpatch-info.on-init'})
     --juuuuust in case
     global.mods = global.mods or {}
     
-    debug_log({'hotpatch-core-info.installing-included-mods'})
+    debug_log({'hotpatch-info.installing-included-mods'})
     local mod
     for i = 1, #static_mods do
         mod = static_mods[i]
@@ -1048,13 +1088,13 @@ on_init = function()
         run_mod(i)
         mod_on_init(i)
     end
-    debug_log({'hotpatch-info.complete', {'hotpatch-core-info.installing-included-mods'}})
-    debug_log({'hotpatch-info.complete', {'hotpatch-core-info.on-init'}})
+    debug_log({'hotpatch-info.complete', {'hotpatch-info.installing-included-mods'}})
+    debug_log({'hotpatch-info.complete', {'hotpatch-info.on-init'}})
 end
 
 on_load = function()
-    debug_log({'hotpatch-core-info.on-load'})
-    debug_log({'hotpatch-core-info.loading-installed-mods'})
+    debug_log({'hotpatch-info.on-load'})
+    debug_log({'hotpatch-info.loading-installed-mods'})
     
     if global.globals then
         error('Upgrading from Hotpatch 1.0.X to 1.1.0 is not currently supported!')
@@ -1095,31 +1135,46 @@ on_load = function()
         mod_on_load(i)
     end
     
-    debug_log({'hotpatch-info.complete', {'hotpatch-core-info.loading-installed-mods'}})
-    debug_log({'hotpatch-info.complete', {'hotpatch-core-info.on-load'}})
+    debug_log({'hotpatch-info.complete', {'hotpatch-info.loading-installed-mods'}})
+    debug_log({'hotpatch-info.complete', {'hotpatch-info.on-load'}})
 end
 
 on_configuration_changed = function(config)
-    debug_log({'hotpatch-core-info.on-configuration-changed'})
+    debug_log({'hotpatch-info.on-configuration-changed'})
     for i = 1, #loaded_mods do
         mod_on_configuration_changed(i)
     end
-    debug_log({'hotpatch-info.complete', {'hotpatch-core-info.on-configuration-changed'}})
+    debug_log({'hotpatch-info.complete', {'hotpatch-info.on-configuration-changed'}})
 end
 
-on_tick = function(e)
-    --local event_name = 'on_tick'
-    --debug_log({'hotpatch-core-info.event-processing', event_name})
-    local mod
-    for i = 1, #loaded_mods do
-        mod = loaded_mods[i]
-        local f = mod.on_tick
-        if f then 
-            --debug_log({'hotpatch-mod-info.event-running', 'on_tick'}, mod.name)
-            f(e)
+if debug_log_on_tick then
+    on_tick = function(e)
+        debug_log({'hotpatch-trace.event-processing', 'on_tick'})
+        local mod
+        local f
+        for i = 1, #loaded_mods do
+            mod = loaded_mods[i]
+            f = mod.on_tick
+            if f then 
+                debug_log({'hotpatch-trace.event-running', 'on_tick'}, mod.name)
+                f(e)
+            end
+        end
+    end
+else
+    on_tick = function(e)
+        local mod
+        local f
+        for i = 1, #loaded_mods do
+            mod = loaded_mods[i]
+            f = mod.on_tick
+            if f then 
+                f(e)
+            end
         end
     end
 end
+
 
 script.on_init(on_init)
 script.on_load(on_load)
@@ -1159,9 +1214,24 @@ local mod_tools_internal = setmetatable({
     console = console,
     debug_log = debug_log,
     loaded_mods = loaded_mods,
+    loaded_libraries = loaded_libraries,
+    installed_mods = setmetatable({}, {
+        __index = function(t, k)
+            return global.mods[k]
+        end,
+        __newindex = function(t, k, v)
+        -- do nothing
+        end,
+        __len = function(t)
+            return #global.mods
+        end,
+        __pairs = function(t) local function iter(t, k) local v; v = global.mods[k+1]; if v then return k+1, v end; end; return iter, t, 0 end,
+        __ipairs = function(t) local function iter(t, k) local v; v = global.mods[k+1]; if v then return k+1, v end; end; return iter, t, 0 end,
+        __metatable = false,
+    })
 },{
     __index = function(t, k)
-        debug_log({'hotpatch-core-warning.invalid-API-access', k}, nil, 3)
+        debug_log({'hotpatch-warning.invalid-API-access', k}, nil, 3)
     end,
     __newindex = function(t, k, v)
         -- do nothing

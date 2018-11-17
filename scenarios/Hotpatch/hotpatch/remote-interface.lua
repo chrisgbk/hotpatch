@@ -1,3 +1,5 @@
+local hotpatch_tools = require 'hotpatch.mod-tools'
+hotpatch_tools.static_mod('hotpatch-remote-interface', '1.0.0', [===[
 --[[
 
 Copyright 2018 Chrisgbk
@@ -44,6 +46,7 @@ local mod_on_configuration_changed = hotpatch_tools.mod_on_configuration_changed
 local console = hotpatch_tools.console
 local debug_log = hotpatch_tools.debug_log
 local loaded_mods = hotpatch_tools.loaded_mods
+local installed_mods = hotpatch_tools.installed_mods
 
 local remote_interface = {}
 
@@ -63,7 +66,7 @@ remote_interface['install'] = function(mod_name, mod_version, mod_code, mod_file
         local installed_index = find_installed_mod(mod_name)
         local loaded_index = find_loaded_mod(mod_name)
         if installed_index then
-            local old_version = global.mods[installed_index].version
+            local old_version = installed_mods[installed_index].version
             if old_version then
                 debug_log('WARNING: mod already exists: ' .. mod_name .. ' ' .. old_version)
                 debug_log('WARNING: reinstalling mod in-place: ' .. mod_name .. ' ' .. mod_version)
@@ -77,14 +80,26 @@ remote_interface['install'] = function(mod_name, mod_version, mod_code, mod_file
         if not only_install then
             installed_index = find_installed_mod(mod_name)
             if installed_index then
-                load_mod(installed_index)
+                if not load_mod(installed_index) then
+                    caller.print('compilation failed for mod ' .. mod_name)
+                    return
+                end
                 loaded_index = find_loaded_mod(mod_name)
                 if loaded_index then
-                    run_mod(loaded_index)
-                    mod_on_init(loaded_index)
+                    if not run_mod(loaded_index) then
+                        caller.print('execution failed for mod ' .. mod_name)
+                        return
+                    end
+                    if not mod_on_init(loaded_index) then
+                        caller.print('on_init failed for mod ' .. mod_name)
+                        return
+                    end
                     -- TODO: notify all mods
                     -- TODO: determine vanilla behaviour and replicate it
-                    mod_on_configuration_changed(loaded_index, {mod_changes = {mod_name={new_version=mod_version}}})
+                    if not mod_on_configuration_changed(loaded_index, {mod_changes = {mod_name={new_version=version}}}) then
+                        caller.print('on_configuration_changed failed for mod ' .. mod_name)
+                        return
+                    end
                 else
                 end
             else
@@ -105,7 +120,10 @@ remote_interface['run'] = function(mod_name)
         local installed_index = find_installed_mod(mod_name)
         local loaded_index = find_loaded_mod(mod_name)
         if installed_index and not loaded_index then
-            load_mod(installed_index)
+            if not load_mod(installed_index) then
+                caller.print('compilation failed for mod ' .. mod_name)
+                return
+            end
             loaded_index = find_loaded_mod(mod_name)
         else
             if loaded_index then
@@ -117,11 +135,20 @@ remote_interface['run'] = function(mod_name)
         end
         
         if loaded_index then
-            run_mod(loaded_index)
-            mod_on_init(loaded_index)
+            if not run_mod(loaded_index) then
+                caller.print('execution failed for mod ' .. mod_name)
+                return
+            end
+            if not mod_on_init(loaded_index) then
+                caller.print('on_init failed for mod ' .. mod_name)
+                return
+            end
             -- TODO: notify all mods
             -- TODO: determine vanilla behaviour and replicate it
-            mod_on_configuration_changed(loaded_index, {mod_changes = {mod_name={new_version=version}}})
+            if not mod_on_configuration_changed(loaded_index, {mod_changes = {mod_name={new_version=version}}}) then
+                caller.print('on_configuration_changed failed for mod ' .. mod_name)
+                return
+            end
         end    
     else
         caller.print('You must be an admin to run this command.')
@@ -144,18 +171,36 @@ remote_interface['update'] = function(mod_name, mod_version, mod_code, mod_files
         end
         install_mod(mod_name, mod_version, mod_code, mod_files)
         installed_index = find_installed_mod(mod_name)
-        load_mod(installed_index)
-        run_mod(installed_index)
+        if not load_mod(installed_index) then
+            caller.print('compilation failed for mod ' .. mod_name)
+            return
+        end
+        if not run_mod(loaded_index) then
+            caller.print('execution failed for mod ' .. mod_name)
+            return
+        end
         if old_version then
-            mod_on_load(installed_index)
+            if not mod_on_load(installed_index) then
+                caller.print('on_load failed for mod ' .. mod_name)
+                return
+            end
             -- The mod must do any migrations here
             -- TODO: notify all mods
-            mod_on_configuration_changed(installed_index, {mod_changes = {mod_name={old_version=old_version, new_version=mod_version}}})
+            if not mod_on_configuration_changed(installed_index, {mod_changes = {mod_name={old_version=old_version, new_version=mod_version}}}) then
+                caller.print('on_configuration_changed failed for mod ' .. mod_name)
+                return
+            end
         else
             -- first time install
-            mod_on_init(installed_index)
+            if not mod_on_init(installed_index) then
+                caller.print('on_init failed for mod ' .. mod_name)
+                return
+            end
             -- TODO: notify all mods
-            mod_on_configuration_changed(installed_index, {mod_changes = {mod_name={new_version=mod_version}}})
+            if not mod_on_configuration_changed(installed_index, {mod_changes = {mod_name={new_version=mod_version}}}) then
+                caller.print('on_configuration_changed failed for mod ' .. mod_name)
+                return
+            end
         end
     else
         caller.print('You must be an admin to run this command.')
@@ -198,6 +243,10 @@ end
 
 remote.add_interface('hotpatch', remote_interface)
 
+debug_log({'hotpatch-info.complete', {'hotpatch-info.remote-installing'}})
+
+]===])
+
 --[[
 
 remote.call('hotpatch, 'install', 'test', '1.0.0', [===[ 
@@ -212,5 +261,4 @@ remote.call('hotpatch', 'update', 'test', '1.0.1', updated_code)
 
 ]]
 
-debug_log({'hotpatch-info.complete', {'hotpatch-info.remote-installing'}})
-return remote_interface
+return true

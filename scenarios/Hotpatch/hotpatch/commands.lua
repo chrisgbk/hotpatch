@@ -1,3 +1,5 @@
+local hotpatch_tools = require 'hotpatch.mod-tools'
+hotpatch_tools.static_mod('hotpatch-commands', '1.0.0', [===[
 --[[
 
 Copyright 2018 Chrisgbk
@@ -44,11 +46,44 @@ local mod_on_configuration_changed = hotpatch_tools.mod_on_configuration_changed
 local console = hotpatch_tools.console
 local debug_log = hotpatch_tools.debug_log
 local loaded_mods = hotpatch_tools.loaded_mods
+local installed_mods = hotpatch_tools.installed_mods
 
-local sub_commands = {
-    help = function(player, param)
-    
-    end
+local help_commands = {
+    help = '/hotpatch help\nYou got this far, you probably know all you need to know',
+    list = '/hotpatch list [type]\nLists \'installed\', \'loaded\' or \'running\' mods',
+}
+
+local sub_commands
+sub_commands = {
+    help = function(player_index, param)
+        local caller = (player_index and game.players[player_index]) or console
+        if (not param) or (param == '') then
+            caller.print('Usage: /hotpatch [command] [parameters]')
+            caller.print('Available commands:')
+            for k, v in pairs(sub_commands) do caller.print(k) end
+            caller.print('Use /hotpatch help [command] for help on a particular command')
+        else
+            local text = help_commands[param]
+            if text then 
+                caller.print(text)
+            end
+        end
+    end,
+    list = function(player_index, param)
+        local caller = (player_index and game.players[player_index]) or console
+        if not param or (param == '') then
+            caller.print('Installed mods:')
+            for k, v in pairs(installed_mods) do
+                caller.print(table.concat{'[', k, '] ', v.name, ' ', v.version})
+            end
+            caller.print('Loaded/Running mods:')
+            for k, v in pairs(loaded_mods) do
+                caller.print(table.concat{'[', k, '] ', v.name, ' ', v.version, ' ', (v.loaded and 'loaded') or 'not loaded', ' ', (v.running and 'running') or 'not running'})
+            end
+        else
+        
+        end
+    end,
 }
 
 local admin_commands = {
@@ -57,7 +92,14 @@ local admin_commands = {
 
 _ENV.commands.add_command('hotpatch', 'Commands for hotpatch. Run /hotpatch help for details.', function(e)
     local caller = (e.player_index and game.players[e.player_index]) or console
-    local sub_command, rest = parameter:match('(.-)%s(.*)')
+    if (not e.parameter) or (e.parameter == '') then 
+        sub_commands['help'](e.player_index)
+        return
+    end
+    local sub_command, rest = e.parameter:match('(.-)%s(.*)')
+    if not sub_command then
+        sub_command = e.parameter
+    end
 
     local f = sub_commands[sub_command]
     if f then f(e.player_index, rest) end
@@ -67,8 +109,6 @@ _ENV.commands.add_command('hotpatch', 'Commands for hotpatch. Run /hotpatch help
     end
 end)
 
+]===])
 
-return {
-    sub_commands = sub_commands,
-    admin_commands = admin_commands
-}
+return true
