@@ -26,6 +26,7 @@ local mod_init = hotpatch_tools.mod_init
 local mod_load = hotpatch_tools.mod_load
 local mod_configuration_changed = hotpatch_tools.mod_configuration_changed
 
+local console = hotpatch_tools.console
 local debug_log = hotpatch_tools.debug_log
 
 local remote_interface = {}
@@ -41,8 +42,8 @@ remote_interface['install'] = function(mod_name, mod_version, mod_code, mod_file
     -- Note that mods may expect that certain events haven't been called yet when their on_init is ran
     -- This may prevent them from functioning properly, without manually calling the events they expect
     -- examples: on_player_created
-    local caller = game.player or _ENV
-    if (caller == _ENV) or caller.admin then
+    local caller = game.player or console
+    if caller.admin then
         local old_version = global.mod_version[mod_name]
         if old_version then
             debug_log('WARNING: mod already exists: ' .. mod_name .. ' ' .. old_version)
@@ -55,6 +56,8 @@ remote_interface['install'] = function(mod_name, mod_version, mod_code, mod_file
         -- TODO: notify all mods
         -- TODO: determine vanilla behaviour and replicate it
         mod_configuration_changed(mod_name, {mod_changes = {mod_name={new_version=mod_version}}})
+    else
+        caller.print('You must be an admin to run this command.')
     end
 end
 
@@ -63,8 +66,8 @@ remote_interface['run'] = function(mod_name)
     -- Note that mods may expect that certain events haven't been called yet when their on_init is ran
     -- This may prevent them from functioning properly, without manually calling the events they expect
     -- examples: on_player_created
-    local caller = game.player or _ENV
-    if (caller == _ENV) or caller.admin then
+    local caller = game.player or console
+    if caller.admin then
         local mod = loaded_mods[mod_name]
         local version = ''
         if mod then
@@ -77,6 +80,8 @@ remote_interface['run'] = function(mod_name)
         -- TODO: notify all mods
         -- TODO: determine vanilla behaviour and replicate it
         mod_configuration_changed(mod_name, {mod_changes = {mod_name={new_version=mod_version}}})
+    else
+        caller.print('You must be an admin to run this command.')
     end
 end
 
@@ -85,8 +90,8 @@ remote_interface['update'] = function(mod_name, mod_version, mod_code, mod_files
     -- the current mods events are de-registered, the new code is installed, on_load is triggered, and then events are registered
     -- finally, the mod is informed of the update, so it can run migrations from the previous version
     -- TODO: validation
-    local caller = game.player or _ENV
-    if (caller == _ENV) or caller.admin then
+    local caller = game.player or console
+    if caller.admin then
         local old_version = global.mod_version[mod_name]
         
         mod_reset_events(mod_name)
@@ -103,31 +108,42 @@ remote_interface['update'] = function(mod_name, mod_version, mod_code, mod_files
             -- TODO: notify all mods
             mod_configuration_changed(mod_name, {mod_changes = {mod_name={new_version=mod_version}}})
         end
+    else
+        caller.print('You must be an admin to run this command.')
     end
 end
 
 remote_interface['install_mod_file'] = function(mod_name, mod_file, mod_file_code)
-    install_mod_file(mod_name, mod_file, mod_file_code)
+    local caller = game.player or console
+    if caller.admin then
+        install_mod_file(mod_name, mod_file, mod_file_code)
+    else
+        caller.print('You must be an admin to run this command.')
+    end
 end
 
 --TODO: most of this function
 remote_interface['clean'] = function(mod_name)
     -- Removes ALL mod data and reinitializes
     -- doesn't remove things a mod may add like surfaces, etc
-    local caller = game.player or _ENV
-    if (caller == _ENV) or caller.admin then
+    local caller = game.player or console
+    if caller.admin then
         mod_reset(mod_name)
         run_mod(mod_name)
         mod_init(mod_name)
         mod_configuration_changed(mod_name, {mod_changes = {mod_name={new_version=mod_version}}})
+    else
+        caller.print('You must be an admin to run this command.')
     end
 end
 
 remote_interface['uninstall'] = function(mod_name)
     -- Uninstalls a mod
-    local caller = game.player or _ENV
-    if (caller == _ENV) or caller.admin then
+    local caller = game.player or console
+    if caller.admin then
         uninstall_mod(mod_name)
+    else
+        caller.print('You must be an admin to run this command.')
     end
 end
 

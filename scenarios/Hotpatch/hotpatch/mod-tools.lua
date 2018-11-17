@@ -14,6 +14,9 @@ local debug_mode = true
 local compat_mode = false
 local strict_mode = false
 
+-- convenience object(rcon.print also prints to stdout when called from server console)
+local console = {name = 'Console', admin = true, print = function(...) rcon.print(...) end, color = {1,1,1,1}}
+
 -- these represent the mods as packaged with the scenario
 local initial_name = {}
 local initial_version = {}
@@ -114,7 +117,7 @@ local function install_mod(mod_name, mod_version, mod_code, mod_files)
     if mod_code:find('--', 1, true) then
         debug_log('WARNING: mod code contains comments: ' .. mod_name)
         if not mod_code:find("\n", 1, true) then
-            error('ERROR: mod contains a single-line comment and no linefeed: ' .. mod_name)
+            debug_log('WARNING: mod contains comments and no linefeed: ' .. mod_name)
         end
         
         debug_log('WARNING: comments from console will comment out the entire code')
@@ -562,6 +565,7 @@ local mod_tools_internal = {
     mod_load = mod_load,
     mod_configuration_changed = mod_configuration_changed,
     
+    console = console,
     debug_log = debug_log
 }
 
