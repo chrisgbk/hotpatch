@@ -319,10 +319,16 @@ local function run_mod(mod_name)
         env['get_sprite_button'] = get_sprite_button
         env['get_tracked_items'] = get_tracked_items
         env['silo_script'] = silo_script
-        env['game'] = game
+        --currently this breaks in a way I haven't investigated yet
+        --env['game'] = game
         
         local mt = {}
+        --local __env = _ENV
+        -- falling back to the "it just works" version until I fix problems with game
         mt.__index = function(t, k)
+            if k == 'game' then 
+                return game
+            end
             debug_log('info: _ENV nil variable access: '  .. k .. ' (' .. mod_name .. ')')
             return nil
         end
