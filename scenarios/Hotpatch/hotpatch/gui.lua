@@ -1,5 +1,5 @@
 local hotpatch_tools = require 'hotpatch.mod-tools'
-hotpatch_tools.static_mod('hotpatch-gui', '1.0.2', [===[
+hotpatch_tools.static_mod('hotpatch-gui', '1.0.3', [===[
 --[[
 
 Copyright 2018 Chrisgbk
@@ -75,7 +75,7 @@ script.on_event(defines.events.on_player_joined_game, function(e)
         main.destroy()
     end
     
-    button = top.add{type = 'button', name = 'hotpatch-button', caption = 'HP', tooltip = 'Hotpatch'}
+    button = top.add{type = 'sprite-button', name = 'hotpatch-button', sprite='utility/heat_exchange_indication', tooltip = 'Hotpatch'}
 end)
 
 local on_gui_click_handlers

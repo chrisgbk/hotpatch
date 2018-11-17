@@ -247,6 +247,14 @@ end
 
 local static_locale = build_locale(static_cfg)
 
+local function escape(s)
+    return (s:gsub('([%^%$%(%)%%%.%[%]%*%+%-%?])', '%%%1'))
+end
+
+local function unescape(s)
+    return (s:gsub('(%%)', ''))
+end
+
 local function static_translate(t, recursive)
     -- only translate tables
     if type(t) ~= 'table' then return t end
@@ -277,16 +285,7 @@ local function static_translate(t, recursive)
     -- substitution of parameters: use literal value of parameter n
     -- __n__
     local result = (pattern:gsub('__(%d+)__', function(s) return tostring(t[tonumber(s)+1]) end))
-    
-    
-    local function escape(s)
-        return (s:gsub('([%^%$%(%)%%%.%[%]%*%+%-%?])', '%%%1'))
-    end
-
-    local function unescape(s)
-        return (s:gsub('(%%)', ''))
-    end
-    
+       
     -- re-substitution engine: match value of parameter n to provide additional translation; use for pluralization
     -- __n:(pattern-1)=substitution-1;(pattern-2)=substitution-2;...(pattern-i)=substitution-i;__
     for n, p in result:gmatch('__(%d+)(:.-;)__') do
@@ -317,22 +316,9 @@ end
 
 -- override log to make it support our translation efforts
 -- any unknown keys are passed to Factorio to translate
--- after this file finishes loading, the old log is restored with the restore_log() function, to allow for run-time locale-only mods that override our static locale
-
 
 local hidden = load([===[
-    local real_log = log
-    local static_translate = select(1, ...)
-    local log = function(...)
-        if select('#', ...) == 1 then
-            real_log(static_translate(...))
-        else
-            local t = table.pack(...)
-            table.insert(t, 1, '\t')
-            real_log(static_translate(t))
-        end
-    end
-    return log
+    local real_log = log; local static_translate = select(1, ...); local log = function(...); if select('#', ...) == 1 then real_log(static_translate(...)) else local t = table.pack(...); table.insert(t, 1, '\t'); real_log(static_translate(t)) end end return log
 ]===], '[HOTPATCH')
 local hidden_log = hidden(static_translate)
 
@@ -1095,6 +1081,10 @@ end
 -- Core registration
 
 on_init = function()
+    hidden = load([===[
+        return function(...) log(...) end
+    ]===], '[HOTPATCH')
+    hidden_log = hidden()
     debug_log({'hotpatch-info.on-init'})
     --juuuuust in case
     global.mods = global.mods or {}
@@ -1119,6 +1109,10 @@ on_init = function()
 end
 
 on_load = function()
+    hidden = load([===[
+        return function(...) log(...) end
+    ]===], '[HOTPATCH')
+    hidden_log = hidden()
     debug_log({'hotpatch-info.on-load'})
     debug_log({'hotpatch-info.loading-installed-mods'})
     
