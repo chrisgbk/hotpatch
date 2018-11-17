@@ -240,7 +240,18 @@ local function run_mod(mod_name)
         env.global = global.globals[mod_name]
         env._G = env
         -- TODO: implement this in tandem with require
-        env['package'] = package
+        env['package'] = {
+            config = package.config,
+            cpath = package.cpath,
+            loaded = env,
+            preload = package.preload,
+            path = package.path,
+            searchers = package.searchers,
+            seeall = package.seeall,
+            loaders = package.loaders,
+            searchpath = package.searchpath
+        }
+        
         
         env.require = function(path)
             -- I blame Nexela for this
@@ -271,13 +282,16 @@ local function run_mod(mod_name)
             end
         end
         
+        env['load'] = function(l, s, m, e)
+            return load(l, s, m, e or env)
+        end
+        env['loadstring'] = env['load']
+        
         env['assert'] = assert
         env['collectgarbage'] = collectgarbage
         env['error'] = error
         env['getmetatable'] = getmetatable
         env['ipairs'] = ipairs
-        env['load'] = load
-        env['loadstring'] = loadstring
         env['next'] = next
         env['pairs'] = pairs
         env['pcall'] = pcall
@@ -323,7 +337,7 @@ local function run_mod(mod_name)
         --env['game'] = game
         
         local mt = {}
-        --local __env = _ENV
+        --mt.__index = _ENV
         -- falling back to the "it just works" version until I fix problems with game
         mt.__index = function(t, k)
             if k == 'game' then 
