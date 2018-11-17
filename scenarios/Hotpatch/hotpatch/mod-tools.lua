@@ -1212,6 +1212,7 @@ local mod_tools_internal = setmetatable({
     mod_on_load = mod_on_load,
     mod_on_configuration_changed = mod_on_configuration_changed,
     
+    static_mods = static_mods,
     console = console,
     debug_log = debug_log,
     loaded_mods = loaded_mods,

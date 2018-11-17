@@ -1,5 +1,5 @@
 local hotpatch_tools = require 'hotpatch.mod-tools'
-hotpatch_tools.static_mod('hotpatch-commands', '1.0.0', [===[
+hotpatch_tools.static_mod('hotpatch-commands', '1.0.1', [===[
 --[[
 
 Copyright 2018 Chrisgbk
@@ -43,6 +43,7 @@ local mod_on_init = hotpatch_tools.mod_on_init
 local mod_on_load = hotpatch_tools.mod_on_load
 local mod_on_configuration_changed = hotpatch_tools.mod_on_configuration_changed
 
+local static_mods = hotpatch_tools.static_mods
 local console = hotpatch_tools.console
 local debug_log = hotpatch_tools.debug_log
 local loaded_mods = hotpatch_tools.loaded_mods
@@ -87,7 +88,27 @@ sub_commands = {
 }
 
 local admin_commands = {
-
+    reinstall = function(player_index, param)
+        local caller = (player_index and game.players[player_index]) or console
+        local mod
+        local installed_index
+        local loaded_index
+        for i = 1, #static_mods do
+            mod = static_mods[i]
+            if mod.name:match('^hotpatch%-.*$') then
+                loaded_index = find_loaded_mod(mod.name)
+                if loaded_index then
+                    unload_mod(loaded_index)
+                end
+                install_mod(mod.name, mod.version, mod.code, mod.files)
+                installed_index = find_installed_mod(mod.name)
+                load_mod(installed_index)
+                loaded_index = find_loaded_mod(mod.name)
+                run_mod(loaded_index)
+                mod_on_init(loaded_index)
+            end
+        end
+    end,
 }
 
 _ENV.commands.add_command('hotpatch', 'Commands for hotpatch. Run /hotpatch help for details.', function(e)

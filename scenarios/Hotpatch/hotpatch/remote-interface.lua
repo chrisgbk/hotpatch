@@ -43,6 +43,7 @@ local mod_on_init = hotpatch_tools.mod_on_init
 local mod_on_load = hotpatch_tools.mod_on_load
 local mod_on_configuration_changed = hotpatch_tools.mod_on_configuration_changed
 
+local static_mods = hotpatch_tools.static_mods
 local console = hotpatch_tools.console
 local debug_log = hotpatch_tools.debug_log
 local loaded_mods = hotpatch_tools.loaded_mods
