@@ -137,8 +137,8 @@ end
 -- I'll make it work myself ¯\_(ツ)_/¯
 local static_cfg = [[
 [hotpatch]
-log=[HOTPATCH@__1__:__2__] __3__
-log-mod=[HOTPATCH@__1__:__2__][__4__] __3__
+log=@__1__:__2__] __3__
+log-mod=@__1__:__2__][__4__] __3__
 severe=SEVERE ERROR: __1__
 error=ERROR: __1__
 warning=WARNING: __1__
@@ -147,14 +147,9 @@ verbose=INFO: __1__
 trace=TRACE: __1__
 
 [hotpatch-info]
-runtime-init=Hotpatch runtime initializing...
 logging-enabled=Logging enabled
 metatable-installed=_ENV metatable installed
 complete=__1__ Complete!
-nil-var-access=_ENV nil variable access: __1__
-nil-var-assignment=_ENV variable assignment: __1__
-must-be-admin=You must be an admin to run this command
-remote-installing=installing remote interface
 on-init=initializing...
 on-load=loading...
 on-configuration-changed=mod configuration changed...
@@ -166,21 +161,20 @@ uninstalling=Uninstalling mod...
 installing=Installing version __1__...
 installing-file=Installing file __1__...
 script-shim=setting up mod script shim...
-caching-event=caching event: __1__...
-caching-nth-tick-event=caching nth_tick event: __1__...
 setting-env=setting up mod _ENV...
-cached-load-require=loading cached require'd file: __1__...
-load-require=loading require'd file: __1__...
-load-core-lib=loading from Factorio.data.core.lualib: __1__...
 loading=loading...
 unloading=unloading...
 running=running...
+must-be-admin=You must be an admin to run this command
+remote-installing=installing remote interface
 
 [hotpatch-trace]
+nil-var-access=_ENV nil variable access: __1__
+nil-var-assignment=_ENV variable assignment: __1__
 event-registering=registering events...
-tick-event-registered=registered on_tick event...
-event-registered=registered event __1__...
-nth-tick-event-registered=registered nth_tick event __1__...
+on-tick-event-registered=registered on_tick event...
+on-event-registered=registered event __1__...
+on-nth-tick-event-registered=registered nth_tick event __1__...
 event-running=running event __1__...
 nth-tick-event-running=running nth_event __1__...
 mod-on-init=running on_init...
@@ -188,14 +182,19 @@ mod-on-load=running on_load...
 mod-on-configuration-changed=running on_configuration_changed...
 adding-event=adding event __1__
 adding-nth-tick-event=adding nth_tick event __1__
+caching-event=caching event: __1__...
+caching-nth-tick-event=caching nth_tick event: __1__...
 event-processing=processing event __1__...
 nth-tick-event-processing=processing nth_tick event __1__...
-nth-tick-handler-added=adding nth_tick handler: __1__
-nth-tick-handler-removed=adding nth_tick handler: __1__
-on-tick-handler-added=adding nth_tick handler: __1__
-on-tick-handler-removed=adding nth_tick handler: __1__
-on-event-handler-added=adding nth_tick handler: __1__
-on-event-handler-removed=adding nth_tick handler: __1__
+nth-tick-handler-added=added nth_tick handler: __1__
+nth-tick-handler-removed=removed nth_tick handler: __1__
+on-tick-handler-added=added on_tick handler
+on-tick-handler-removed=removed on_tick handler
+on-event-handler-added=added event handler: __1__
+on-event-handler-removed=removed event handler: __1__
+cached-load-require=loading cached require'd file: __1__...
+load-require=loading require'd file: __1__...
+load-core-lib=loading from Factorio.data.core.lualib: __1__...
 
 [hotpatch-warning]
 contains-comments=mod code contains comments!
@@ -230,6 +229,7 @@ local function build_locale(ini)
     end
     
     -- for each non-empty line do
+    local key, value
     for l in ini:gmatch('[\r\n]*(.-)[\r\n]+') do
         -- header?
         temp = l:match('^%[(.-)%].*$')
@@ -238,7 +238,7 @@ local function build_locale(ini)
             temp = nil
         else
             --key=value
-            local key, value = l:match('^(.-)=(.+)$')
+            key, value = l:match('^(.-)=(.+)$')
             t[table.concat{section, '.', key}] = value
         end
     end
@@ -317,16 +317,23 @@ end
 -- override log to make it support our translation efforts
 -- any unknown keys are passed to Factorio to translate
 -- after this file finishes loading, the old log is restored with the restore_log() function, to allow for run-time locale-only mods that override our static locale
-local real_log = log
-local log = function(...)
-    if select('#', ...) == 1 then
-        real_log(static_translate(...))
-    else
-        local t = table.pack(...)
-        table.insert(t, 1, '\t')
-        real_log(static_translate(t))
+
+
+local hidden = load([===[
+    local real_log = log
+    local static_translate = select(1, ...)
+    local log = function(...)
+        if select('#', ...) == 1 then
+            real_log(static_translate(...))
+        else
+            local t = table.pack(...)
+            table.insert(t, 1, '\t')
+            real_log(static_translate(t))
+        end
     end
-end
+    return log
+]===], '[HOTPATCH')
+local hidden_log = hidden(static_translate)
 
 -- logs localized data
 local function debug_log(message, mod_name, stack_level)
@@ -359,7 +366,7 @@ local function debug_log(message, mod_name, stack_level)
                 print{log_type, file, line, {class, message}, mod_name}
 
             else
-                log{log_type, file, line, {class, message}, mod_name}
+                hidden_log{log_type, file, line, {class, message}, mod_name}
             end
         end
     end
@@ -370,11 +377,11 @@ debug_log({'hotpatch-info.logging-enabled'})
 -- track _ENV accesses
 setmetatable(_ENV, {
 	__index = function(t, k)
-		debug_log({'hotpatch-info.nil-var-access', k}, nil, 3)
+		debug_log({'hotpatch-trace.nil-var-access', k}, nil, 3)
 		return nil
 	end,
 	__newindex = function(t, k, v)
-		debug_log({'hotpatch-info.nil-var-assignment', k}, nil, 3)
+		debug_log({'hotpatch-trace.nil-var-assignment', k}, nil, 3)
 		rawset(t,k,v)
 	end,
 	__metatable = false
@@ -685,7 +692,7 @@ load_mod = function(installed_index)
                 path = env.package._current_path_in_package .. path
             end
             if mod_obj.loaded_files[path] then
-                debug_log({'hotpatch-info.cached-load-require', path}, mod_name)
+                debug_log({'hotpatch-trace.cached-load-require', path}, mod_name)
                 return mod_obj.loaded_files[path]
             else
                 local oldbase = env.package._current_path_in_package
@@ -695,8 +702,8 @@ load_mod = function(installed_index)
                 end
                 local file = global.mods[installed_index].files[path]
                 if file then
-                    debug_log({'hotpatch-info.load-require', path}, mod_name)
-                    local code, err = load(file, 'hotpatch require ' .. path .. ' (' .. mod_name .. ')', 'bt', env)
+                    debug_log({'hotpatch-trace.load-require', path}, mod_name)
+                    local code, err = load(file, '[' .. mod_name .. '] ' .. path .. '.lua', 'bt', env)
                     if code then
                         local result = code()
                         mod_obj.loaded_files[path] = result or true
@@ -707,7 +714,7 @@ load_mod = function(installed_index)
                         error(err)
                     end
                 end
-                debug_log({'hotpatch-info.load-core-lib', path}, mod_name)
+                debug_log({'hotpatch-trace.load-core-lib', path}, mod_name)
                 env.package._current_path_in_package = oldbase
                 return package.loaded[path]
             end
@@ -726,11 +733,11 @@ load_mod = function(installed_index)
         
         local mt = {}
         mt.__index = function(t, k)
-            debug_log({'hotpatch-info.nil-var-access', k}, mod_name, 3)
+            debug_log({'hotpatch-trace.nil-var-access', k}, nil, 3)
             return nil
         end
         mt.__newindex = function(t, k, v)
-            debug_log({'hotpatch-info.nil-var-assignment', k}, mod_name, 3)
+            debug_log({'hotpatch-trace.nil-var-assignment', k}, nil, 3)
             rawset(t,k,v)
         end
         -- Don't let mods break this
@@ -740,7 +747,7 @@ load_mod = function(installed_index)
         --load/run code
         debug_log({'hotpatch-info.loading'}, mod_name)
         
-        local mod_code, message = load(mod.code, 'hotpatch loader (' .. mod_name .. ')', 'bt', env)
+        local mod_code, message = load(mod.code, '[' .. mod_name .. '] control.lua', 'bt', env)
         if not mod_code then
             debug_log({'hotpatch-error.compilation-failed'}, mod_name)
             if game and game.player then
@@ -936,16 +943,16 @@ register_mod_events = function(loaded_index)
     local mod_name = mod.name
     debug_log({'hotpatch-trace.event-registering'}, mod_name)
     if mod.on_tick then
-        debug_log({'hotpatch-trace.tick-event-registered'}, mod_name)
+        debug_log({'hotpatch-trace.on-tick-event-registered'}, mod_name)
         script.on_event(defines.events.on_tick, on_tick)
     end
     for k,v in pairs(mod.on_event) do 
         local event_name = (event_names[k] or k)
-        debug_log({'hotpatch-trace.event-registered', event_name}, mod_name)
+        debug_log({'hotpatch-trace.on-event-registered', event_name}, mod_name)
         script.on_event(k, on_event)
     end
     for k,v in pairs(mod.on_nth_tick) do 
-        debug_log({'hotpatch-trace.nth-tick-event-registered', k}, mod_name)
+        debug_log({'hotpatch-trace.on-nth-tick-event-registered', k}, mod_name)
         script.on_nth_tick(k, on_nth_tick)
     end
 end
@@ -954,7 +961,7 @@ mod_on_init = function(loaded_index)
     local mod = loaded_mods[loaded_index]
     
     if mod then
-        debug_log({'hotpatch-info.on-init'}, mod.name)
+        debug_log({'hotpatch-trace.mod-on-init'}, mod.name)
         if mod.on_init then 
             local success, result = xpcall(mod.on_init, debug.traceback)
             if not success then
@@ -973,7 +980,7 @@ mod_on_load = function(loaded_index)
     local mod = loaded_mods[loaded_index]
     
     if mod then
-        debug_log({'hotpatch-info.on-load'}, mod.name)
+        debug_log({'hotpatch-trace.mod-on-load'}, mod.name)
         if mod.on_load then 
             local success, result = xpcall(mod.on_load, debug.traceback)
             if not success then
@@ -992,7 +999,7 @@ mod_on_configuration_changed = function(loaded_index, config)
     local mod = loaded_mods[loaded_index]
     
     if mod then
-        debug_log({'hotpatch-info.on-configuration-changed'}, mod.name)
+        debug_log({'hotpatch-trace.mod-on-configuration-changed'}, mod.name)
         if mod.on_configuration_changed then 
             local success, result = xpcall(mod.on_configuration_changed, debug.traceback, config)
             if not success then
@@ -1036,7 +1043,7 @@ register_nth_tick = function(mod_name, nth_tick)
             break 
         end
     end
-    debug_log({'hotpatch-trace.nth-tick-event-registered', nth_tick}, mod_name)
+    debug_log({'hotpatch-trace.on-nth-tick-event-registered', nth_tick}, mod_name)
     if found_event then
         debug_log({'hotpatch-trace.nth-tick-handler-added', nth_tick})
         script.on_nth_tick(event.nth_tick, on_nth_tick)
@@ -1062,7 +1069,7 @@ register_event = function(mod_name, event_name)
            script.on_event(event.event, on_event)
         end
     else
-        debug_log({'hotpatch-trace.on-event-handler-added', (event_names[event_name] or event_name)})
+        debug_log({'hotpatch-trace.on-event-handler-removed', (event_names[event_name] or event_name)})
         script.on_event(event.event, nil)
     end
 end
@@ -1233,7 +1240,7 @@ local mod_tools_internal = setmetatable({
     })
 },{
     __index = function(t, k)
-        debug_log({'hotpatch-warning.invalid-API-access', k}, nil, 3)
+        debug_log({'hotpatch-error.invalid-API-access', k}, nil, 3)
     end,
     __newindex = function(t, k, v)
         -- do nothing
@@ -1248,9 +1255,6 @@ local mod_tools = setmetatable({
     static_mod = static_mod, -- (name, version, code, files)
     set_debug_level = function(level)
         debug_level = tonumber(_ENV.debug_settings.level) or debug_levels[_ENV.debug_settings.level]
-    end,
-    restore_log = function()
-        log = real_log
     end,
 },{
     __index = mod_tools_internal,

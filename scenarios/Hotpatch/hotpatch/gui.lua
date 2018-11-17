@@ -201,11 +201,11 @@ on_gui_selection_state_changed_handlers = {
                 version_label.caption = 'Version: ' .. mod.version
                 local list = center['hotpatch-main']['hotpatch-main-table']['hotpatch-files']['hotpatch-files-table']
                 list.clear()
-                local file = list.add{type = 'label', caption = 'control', name = 'hotpatch-file.control'}
+                local file = list.add{type = 'label', style = 'hoverable_bold_label', caption = 'control', name = 'hotpatch-file.control'}
                 file.style.bottom_padding = 0
                 file.style.top_padding = 0
                 for k, v in pairs(mod.files) do
-                    file = list.add{type = 'label', caption = k, name = 'hotpatch-file.' .. k}
+                    file = list.add{type = 'label', style = 'hoverable_bold_label', caption = k, name = 'hotpatch-file.' .. k}
                     file.style.bottom_padding = 0
                     file.style.top_padding = 0
                 end

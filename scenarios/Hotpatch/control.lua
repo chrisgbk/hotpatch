@@ -61,5 +61,3 @@ hotpatch_tools.static_mod('require-test', '1.0.0', [===[
 --]]
 
 -- end of mod code
-
-hotpatch_tools.restore_log()
