@@ -13,18 +13,18 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 -- Hotpatchable control.lua for scenarios
 -- Supports multiple simultaneously loaded softmods
 -- This is a WIP
--- Version 0.1 beta
--- probably some performance improvements to be made by eliminating usage of the hash part of tables and sticking to the array part
--- events, loaded mods, etc etc
+-- Version 1.1 alpha
+-- probably some performance improvements to be made
 
 local hotpatch_tools = require 'hotpatch.mod-tools'
 local hotpatch_remote = require 'hotpatch.remote-interface'
+local hotpatch_commands = require 'hotpatch.commands'
 
 -- mod code goes here
 
 -- Single-file test
 --[[
-hotpatch_tools.new_mod('test', '1.0.0', [===[
+hotpatch_tools.static_mod('test', '1.0.0', [===[
     script.on_init(function()
         log('test')
     end)
@@ -47,10 +47,11 @@ files['test'] = [===[
     require 'testfolder.test' 
 ]===]
 
-hotpatch_tools.new_mod('require-test', '1.0.0', [===[
+hotpatch_tools.static_mod('require-test', '1.0.0', [===[
     require 'test'
 ]===], files)
 --]]
 
 -- end of mod code
 
+hotpatch_tools.restore_log()

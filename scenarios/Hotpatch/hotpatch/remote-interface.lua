@@ -9,25 +9,41 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ]]
 -- MIT License, https://opensource.org/licenses/MIT
+
 local hotpatch_tools = require 'hotpatch.mod-tools'
 
 --load private API
+-- mod installation/uninstallation support functions
+-- These take a mod NAME as a first argument
 local install_mod = hotpatch_tools.install_mod
+local find_installed_mod = hotpatch_tools.find_installed_mod
 local install_mod_file = hotpatch_tools.install_mod_file
-local run_mod = hotpatch_tools.run_mod
 local uninstall_mod = hotpatch_tools.uninstall_mod
 
-local loaded_mods = hotpatch_tools.loaded_mods
-local mod_env = hotpatch_tools.mod_env
+-- mod interaction functions
+-- These take a LOADED INDEX as a first argument, except load_mod, which takes an INSTALLED INDEX
+local load_mod = hotpatch_tools.load_mod
+local find_loaded_mod = hotpatch_tools.find_loaded_mod
+local run_mod = hotpatch_tools.run_mod
+local reset_mod = hotpatch_tools.reset_mod
+local reset_mod_events = hotpatch_tools.reset_mod_events
+local register_mod_events = hotpatch_tools.register_mod_events
+local unload_mod = hotpatch_tools.unload_mod
 
-local mod_reset = hotpatch_tools.mod_reset
-local mod_reset_events = hotpatch_tools.mod_reset_events
-local mod_init = hotpatch_tools.mod_init
-local mod_load = hotpatch_tools.mod_load
-local mod_configuration_changed = hotpatch_tools.mod_configuration_changed
+-- internal callbacks when a mod registers events
+local register_event = hotpatch_tools.register_event
+local register_nth_tick = hotpatch_tools.register_nth_tick
+local register_on_tick = hotpatch_tools.register_on_tick
+
+-- mod bootstrap functions
+-- These take a LOADED INDEX as a first argument
+local mod_on_init = hotpatch_tools.mod_on_init
+local mod_on_load = hotpatch_tools.mod_on_load
+local mod_on_configuration_changed = hotpatch_tools.mod_on_configuration_changed
 
 local console = hotpatch_tools.console
 local debug_log = hotpatch_tools.debug_log
+
 
 local remote_interface = {}
 
@@ -35,27 +51,45 @@ local remote_interface = {}
 -- FACTORIO CONSOLE STRIPS LINEFEEDS WHICH MAKES ALL THE CODE BECOME COMMENTED OUT
 --TODO: gate these behind admin permissions; if (game.player and game.player.admin) should work for console commands?
 
-debug_log('info: installing remote interface...')
+debug_log({'hotpatch-info.remote-installing'})
 
-remote_interface['install'] = function(mod_name, mod_version, mod_code, mod_files)
+remote_interface['install'] = function(mod_name, mod_version, mod_code, mod_files, only_install)
     -- this installs a new mod and runs on_init, then registers events
     -- Note that mods may expect that certain events haven't been called yet when their on_init is ran
     -- This may prevent them from functioning properly, without manually calling the events they expect
     -- examples: on_player_created
     local caller = game.player or console
     if caller.admin then
-        local old_version = global.mod_version[mod_name]
-        if old_version then
-            debug_log('WARNING: mod already exists: ' .. mod_name .. ' ' .. old_version)
-            debug_log('WARNING: reinstalling mod in-place: ' .. mod_name .. ' ' .. mod_version)
+        local installed_index = find_installed_mod(mod_name)
+        local loaded_index = find_loaded_mod(mod_name)
+        if installed_index then
+            local old_version = global.mods[installed_index].version
+            if old_version then
+                debug_log('WARNING: mod already exists: ' .. mod_name .. ' ' .. old_version)
+                debug_log('WARNING: reinstalling mod in-place: ' .. mod_name .. ' ' .. mod_version)
+            end
+            if loaded_index then
+                unload_mod(loaded_index)
+            end
         end
         
         install_mod(mod_name, mod_version, mod_code, mod_files)
-        run_mod(mod_name)
-        mod_init(mod_name)
-        -- TODO: notify all mods
-        -- TODO: determine vanilla behaviour and replicate it
-        mod_configuration_changed(mod_name, {mod_changes = {mod_name={new_version=mod_version}}})
+        if not only_install then
+            installed_index = find_installed_mod(mod_name)
+            if installed_index then
+                load_mod(installed_index)
+                loaded_index = find_loaded_mod(mod_name)
+                if loaded_index then
+                    run_mod(loaded_index)
+                    mod_init(loaded_index)
+                    -- TODO: notify all mods
+                    -- TODO: determine vanilla behaviour and replicate it
+                    mod_configuration_changed(loaded_index, {mod_changes = {mod_name={new_version=mod_version}}})
+                else
+                end
+            else
+            end
+        end
     else
         caller.print('You must be an admin to run this command.')
     end
@@ -68,18 +102,27 @@ remote_interface['run'] = function(mod_name)
     -- examples: on_player_created
     local caller = game.player or console
     if caller.admin then
-        local mod = loaded_mods[mod_name]
-        local version = ''
-        if mod then
-            debug_log('WARNING: mod already loaded: ' .. mod_name .. ' ' .. version)
-            debug_log('WARNING: reinitializing: ' .. mod_name .. ' ' .. version)
+        local installed_index = find_installed_mod(mod_name)
+        local loaded_index = find_loaded_mod(mod_name)
+        if installed_index and not loaded_index then
+            load_mod(installed_index)
+            loaded_index = find_loaded_mod(mod_name)
+        else
+            if loaded_index then
+                local mod = loaded_mods[loaded_index]
+                local version = mod.version
+                debug_log('WARNING: mod already loaded: ' .. mod_name .. ' ' .. version)
+                debug_log('WARNING: reinitializing: ' .. mod_name .. ' ' .. version)
+            end
         end
         
-        run_mod(mod_name)
-        mod_init(mod_name)
-        -- TODO: notify all mods
-        -- TODO: determine vanilla behaviour and replicate it
-        mod_configuration_changed(mod_name, {mod_changes = {mod_name={new_version=mod_version}}})
+        if loaded_index then
+            run_mod(loaded_index)
+            mod_init(loaded_index)
+            -- TODO: notify all mods
+            -- TODO: determine vanilla behaviour and replicate it
+            mod_configuration_changed(loaded_index, {mod_changes = {mod_name={new_version=version}}})
+        end    
     else
         caller.print('You must be an admin to run this command.')
     end
@@ -92,21 +135,27 @@ remote_interface['update'] = function(mod_name, mod_version, mod_code, mod_files
     -- TODO: validation
     local caller = game.player or console
     if caller.admin then
-        local old_version = global.mod_version[mod_name]
-        
-        mod_reset_events(mod_name)
+        local installed_index = find_installed_mod(mod_name)
+        local loaded_index = find_loaded_mod(mod_name)
+        local old_version
+        if loaded_index then
+            old_version = loaded_mods[loaded_index].version
+            unload_mod(loaded_index)
+        end
         install_mod(mod_name, mod_version, mod_code, mod_files)
-        run_mod(mod_name)
+        installed_index = find_installed_mod(mod_name)
+        load_mod(installed_index)
+        run_mod(installed_index)
         if old_version then
-            mod_load(mod_name)
+            mod_load(installed_index)
             -- The mod must do any migrations here
             -- TODO: notify all mods
-            mod_configuration_changed(mod_name, {mod_changes = {mod_name={old_version=old_version, new_version=mod_version}}})
+            mod_configuration_changed(installed_index, {mod_changes = {mod_name={old_version=old_version, new_version=mod_version}}})
         else
             -- first time install
-            mod_init(mod_name)
+            mod_init(installed_index)
             -- TODO: notify all mods
-            mod_configuration_changed(mod_name, {mod_changes = {mod_name={new_version=mod_version}}})
+            mod_configuration_changed(installed_index, {mod_changes = {mod_name={new_version=mod_version}}})
         end
     else
         caller.print('You must be an admin to run this command.')
@@ -163,5 +212,5 @@ remote.call('hotpatch', 'update', 'test', '1.0.1', updated_code)
 
 ]]
 
-debug_log('info: installing remote interface... Complete!')
+debug_log({'hotpatch-info.complete', {'hotpatch-info.remote-installing'}})
 return remote_interface
