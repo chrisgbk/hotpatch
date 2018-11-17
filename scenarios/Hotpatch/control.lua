@@ -16,7 +16,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 -- Version 0.1 beta
 -- probably some performance improvements to be made by eliminating usage of the hash part of tables and sticking to the array part
 -- events, loaded mods, etc etc
-
+local mod_gui = require 'mod-gui'
 local debug_mode = false
 local compat_mode = false
 local sctrict_mode = false
@@ -42,18 +42,26 @@ end
 
 -- mod code goes here
 
--- Multi-file sample
+-- Multi-file test
 --[[
 local files = {}
 
-files['example.test'] = [===[
+files['testfolder.anothertest.test'] = [===[
     script.on_event(defines.events.on_player_changed_position, function(e) game.print('position changed') end)
 ]===]
 
+files['testfolder.test'] = [===[
+    require 'anothertest.test'
+]===]
+
+files['test'] = [===[
+    require 'testfolder.test' 
+]===]
+
 new_mod('require-test', '1.0.0', [===[
-    require 'example.test'
+    require 'test'
 ]===], files)
-]]
+--]]
 
 -- end of mod code
 
@@ -72,6 +80,7 @@ local mod_env = {}
 
 -- internal notification event
 local internal_notify = script.generate_event_name()
+local internal_require = script.generate_event_name()
 
 
 -- TODO: use array part instead of hash part of tables for performance reasons
@@ -85,7 +94,10 @@ local function install_mod(mod_name, mod_version, mod_code, mod_files)
     
     if mod_files then
         for k,v in pairs(mod_files) do
-            global.mod_files[mod_name][k] = v
+            local path = k
+            path = path:gsub('/', '.')
+            path = path:gsub('\\', '.')
+            global.mod_files[mod_name][path] = v
         end
     end
 end
@@ -194,12 +206,29 @@ local function run_mod(mod_name)
         setmetatable(environment, mt)
         
         environment.require = function(path)
+            -- I blame Nexela for this
+            path = path:gsub('/', '.')
+            path = path:gsub('\\', '.')
+            if environment.__base then
+                path = environment.__base .. path
+            end
             if mod_script.__loaded_files[path] then
                 return mod_script.__loaded_files[path]
             else
-                mod_script.__loaded_files[path] = load(global.mod_files[mod_name][path], 'hotpatch require', 'bt', environment)
-                mod_script.__loaded_files[path]()
-                return mod_script.__loaded_files[path]
+                local oldbase = environment.__base
+                environment.__base = path:match('.+%..+%.')
+                if not environment.__base then
+                     environment.__base = path:match('.+%.')
+                end
+                local file = global.mod_files[mod_name][path]
+                if file then
+                    mod_script.__loaded_files[path] = load(global.mod_files[mod_name][path], 'hotpatch require', 'bt', environment)
+                    mod_script.__loaded_files[path]()
+                    environment.__base = oldbase
+                    return mod_script.__loaded_files[path]
+                end
+                
+                return package.loaded[path]
             end
         end
 
@@ -325,10 +354,15 @@ local function on_internal_notify(event)
     end
 end
 
+local function on_internal_require(event)
+    require(event.file)
+end
+
 script.on_init(on_init)
 script.on_load(on_load)
 script.on_configuration_changed(on_configuration_changed)
 script.on_event(internal_notify, on_internal_notify)
+script.on_event(internal_require, on_internal_require)
 
 -- mod update tools, WIP
 -- these support multiple mods, as soon as the underlying code supports it
