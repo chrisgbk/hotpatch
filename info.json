@@ -1,0 +1,10 @@
+{
+	"name": "hotpatch-multimod",
+	"version": "1.0.0",
+	"title": "Server-side Multi-mod Scenario",
+	"author": "Chrisgbk",
+	"homepage": "",
+	"description": "For modders only - this is a framework to load multiple server side mods simultaneously, with runtime hotpatching",
+	"factorio_version": "0.16",
+	"dependencies": ["base >= 0.16.0"]
+}
