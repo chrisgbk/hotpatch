@@ -16,8 +16,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 -- Version 0.1 beta
 -- probably some performance improvements to be made by eliminating usage of the hash part of tables and sticking to the array part
 -- events, loaded mods, etc etc
-local mod_gui = require 'mod-gui'
-local debug_mode = false
+
+local debug_mode = true
 local compat_mode = false
 local sctrict_mode = false
 
@@ -80,12 +80,11 @@ local mod_env = {}
 
 -- internal notification event
 local internal_notify = script.generate_event_name()
-local internal_require = script.generate_event_name()
-
 
 -- TODO: use array part instead of hash part of tables for performance reasons
 
 local function install_mod(mod_name, mod_version, mod_code, mod_files)
+    debug_log('[HOTPATCH] installing mod: ' .. mod_name .. ' ' .. mod_version)
     global.mod_files[mod_name] = global.mod_files[mod_name] or {}
     global.mod_code[mod_name] = mod_code
     global.mod_version[mod_name] = mod_version
@@ -94,6 +93,7 @@ local function install_mod(mod_name, mod_version, mod_code, mod_files)
     
     if mod_files then
         for k,v in pairs(mod_files) do
+            debug_log('[HOTPATCH] installing mod file: ' .. k .. ' (' .. mod_name .. ')')
             local path = k
             path = path:gsub('/', '.')
             path = path:gsub('\\', '.')
@@ -154,9 +154,11 @@ local function run_mod(mod_name)
         end
         if not compat_mode then
             mod_script.on_event = function(event, f)
+                debug_log('[HOTPATCH] caching event: ' .. event)
                 mod_script.__events[event] = f
             end
             mod_script.on_nth_tick = function(tick, f)
+                debug_log('[HOTPATCH] caching nth_tick event: ' .. tick)
                 mod_script.__ticks[tick] = f
             end
         else   
@@ -222,23 +224,26 @@ local function run_mod(mod_name)
                 end
                 local file = global.mod_files[mod_name][path]
                 if file then
+                    debug_log('[HOTPATCH] loading require\'d file: ' .. path)
                     mod_script.__loaded_files[path] = load(global.mod_files[mod_name][path], 'hotpatch require', 'bt', environment)
                     mod_script.__loaded_files[path]()
                     environment.__base = oldbase
                     return mod_script.__loaded_files[path]
                 end
-                
+                debug_log('[HOTPATCH] loading from lualib: ' .. path)
                 return package.loaded[path]
             end
         end
 
         --load/run code
+        debug_log('[HOTPATCH] loading mod: ' .. mod_name)
         local mod_code = load(global.mod_code[mod_name], 'hotpatch loader', 'bt', environment)
         mod_env[mod_name] = environment
         
         if strict_mode then
            environment.global = {}
         end
+        debug_log('[HOTPATCH] running mod: ' .. mod_name)
         mod_code()
         if compat_mode then
             mod_script.__loaded = true
@@ -250,46 +255,85 @@ local function run_mod(mod_name)
            environment.global = global.globals[mod_name]
         end
         loaded_mods[mod_name] = mod_script
+        debug_log('[HOTPATCH] finished running mod: ' .. mod_name)
         
         --load complete, start notifying on event subscriptions
         if not compat_mode then
             mod_script.on_event = function(event, f)
                 mod_script.__events[event] = f
+                debug_log('[HOTPATCH] registering event: ' .. event)
                 script.raise_event(mod_script.__notify, {mod=mod_script.__mod_name, event=event})
             end
             mod_script.on_nth_tick = function(tick, f)
                 mod_script.__ticks[tick] = f
+                debug_log('[HOTPATCH] registering nth_tick event: ' .. tick)
                 script.raise_event(mod_script.__notify, {mod=script.__mod_name, event='on_nth_tick', nth_tick=tick})
             end
         end
     end
 end
 
+-- Note: might be able to optimize this a bit
+-- event handlers to call into mods requested event handlers
+local on_event = function(event)
+    debug_log('[HOTPATCH] processing event: ' .. event.name)
+    for k, v in pairs(loaded_mods) do
+        local f = v.__events[event.name]
+        if f then 
+            debug_log('[HOTPATCH] running event: ' .. event.name .. ' (' .. k .. ')')
+            f(event)
+        end
+    end
+end
+
+local on_nth_tick = function(event)
+    debug_log('[HOTPATCH] processing nth_tick: ' .. event.tick)
+    for k, v in pairs(loaded_mods) do
+        local f = v.__ticks[event.nth_tick]
+        if f then 
+            debug_log('[HOTPATCH] processing nth_tick: ' .. event.tick .. ' (' .. k .. ')')
+            f(event)
+        end
+    end
+end
+
+local function mod_register_events(mod_name)
+    local mod = loaded_mods[mod_name]
+    debug_log('[HOTPATCH] registering events: ' .. mod_name)
+    for k,v in pairs(mod.__events) do 
+        debug_log('[HOTPATCH] registered event: ' .. k .. ' (' .. mod_name .. ')')
+        script.on_event(k, on_event)
+    end
+    for k,v in pairs(mod.__ticks) do 
+        debug_log('[HOTPATCH] registered nth_tick event: ' .. k .. ' (' .. mod_name .. ')')
+        script.on_nth_tick(k, on_nth_tick)
+    end
+end
+
 local function mod_init(mod_name)
+    debug_log('[HOTPATCH] running on_init: ' .. mod_name)
     local mod = loaded_mods[mod_name]
     if mod then
         if mod.__on_init then 
             mod.__on_init()
         end
-        for k,v in pairs(mod.__events) do 
-            script.on_event(k, v)
-        end
+        mod_register_events(mod_name)
     end
 end
 
 local function mod_load(mod_name)
+    debug_log('[HOTPATCH] running on_load: ' .. mod_name)
     local mod = loaded_mods[mod_name]
     if mod then
         if mod.__on_load then 
             mod.__on_load()
         end
-        for k,v in pairs(mod.__events) do 
-            script.on_event(k, v)
-        end
+        mod_register_events(mod_name)
     end
 end
 
 local function mod_configuration_changed(mod_name, config)
+    debug_log('[HOTPATCH] running on_configuration_changed: ' .. mod_name)
     local mod = loaded_mods[mod_name]
     if mod then
         if mod.__on_configuration_changed then 
@@ -299,70 +343,57 @@ local function mod_configuration_changed(mod_name, config)
 end
 
 local function on_init()
+    debug_log('[HOTPATCH] initializing...')
     global.mod_code = global.mod_code or {} --juuuuust in case
     global.mod_version = global.mod_version or {} --ditto
     global.globals = global.globals or {} --double ditto
     global.mod_files = global.mod_files or {} --triple ditto
+    debug_log('[HOTPATCH] installing and loading included mods...')
     for k, v in pairs(initial_code) do
         local n = initial_name[k]
         install_mod(n, initial_version[k], v, initial_files[k])
         run_mod(n)
         mod_init(n)
     end
+    debug_log('[HOTPATCH] installing and loading included mods... Complete!')
+    debug_log('[HOTPATCH] initializing... Complete!')
 end
 
 local function on_load()
+    debug_log('[HOTPATCH] loading...')
+    debug_log('[HOTPATCH] loading included mods...')
     for k, v in pairs(global.mod_code) do
         run_mod(k)
         mod_load(k)
     end
+    debug_log('[HOTPATCH] loading included mods... Complete!')
+    debug_log('[HOTPATCH] loading... Complete!')
 end
 
 local function on_configuration_changed(config)
+    debug_log('[HOTPATCH] configuration change...')
     for k, v in pairs(loaded_mods) do
         mod_configuration_changed(k)
     end
-end
-
--- Note: might be able to optimize this a bit
--- event handlers to call into mods requested event handlers
-local on_event = function(event)
-    for k, v in pairs(loaded_mods) do
-        local f = v.__events[event.name]
-        if f then 
-            f(event)
-        end
-    end
-end
-
-local on_nth_tick = function(event)
-    for k, v in pairs(loaded_mods) do
-        local f = v.__ticks[event.nth_tick]
-        if f then 
-            f(event)
-        end
-    end
+    debug_log('[HOTPATCH] configuration change... Complete!')
 end
 
 -- internal event subscription notification from mods
 -- technically this wastes some cycles by continuously re-subscribing over and over, might fix one day
 local function on_internal_notify(event)
     if event.name == 'on_nth_tick' then
+        debug_log('[HOTPATCH] adding nth_tick: ' .. event.tick .. ' (' .. mod_name .. ')')
         script.on_nth_tick(event.nth_tick, on_nth_tick)
     else
+        debug_log('[HOTPATCH] adding event: ' .. event.name .. ' (' .. mod_name .. ')')
         script.on_event(event.event, on_event)
     end
-end
-
-local function on_internal_require(event)
-    require(event.file)
 end
 
 script.on_init(on_init)
 script.on_load(on_load)
 script.on_configuration_changed(on_configuration_changed)
 script.on_event(internal_notify, on_internal_notify)
-script.on_event(internal_require, on_internal_require)
 
 -- mod update tools, WIP
 -- these support multiple mods, as soon as the underlying code supports it
