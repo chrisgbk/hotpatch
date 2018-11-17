@@ -25,24 +25,34 @@ local sctrict_mode = false
 local initial_name = {}
 local initial_version = {}
 local initial_code = {}
+local initial_files = {}
 
-local function new_mod(name, version, code)
+local function new_mod(name, version, code, files)
     local i = #initial_code + 1
     initial_name[i] = name
     initial_version[i] = version
     initial_code[i] = code
+    initial_files[i] = {}
+    if files then
+        for k, v in pairs(files) do
+            initial_files[i][k] = v
+        end
+    end
 end
 
 -- mod code goes here
 
+-- Multi-file sample
 --[[
+local files = {}
 
-example usage:
-
-new_mod('my-mod', '1.0.0', [===[
-    script.on_init(...)
+files['example.test'] = [===[
+    script.on_event(defines.events.on_player_changed_position, function(e) game.print('position changed') end)
 ]===]
 
+new_mod('require-test', '1.0.0', [===[
+    require 'example.test'
+]===], files)
 ]]
 
 -- end of mod code
@@ -65,11 +75,19 @@ local internal_notify = script.generate_event_name()
 
 
 -- TODO: use array part instead of hash part of tables for performance reasons
-local function install_mod(mod_name, mod_version, mod_code)
+
+local function install_mod(mod_name, mod_version, mod_code, mod_files)
+    global.mod_files[mod_name] = global.mod_files[mod_name] or {}
     global.mod_code[mod_name] = mod_code
     global.mod_version[mod_name] = mod_version
     -- mods private global table
     global.globals[mod_name] = global.globals[mod_name] or {}
+    
+    if mod_files then
+        for k,v in pairs(mod_files) do
+            global.mod_files[mod_name][k] = v
+        end
+    end
 end
 
 --TODO: multiple mod support
@@ -107,6 +125,7 @@ local function run_mod(mod_name)
         
         --mods private script table/shim
         local mod_script = {}
+        mod_script.__loaded_files = {}
         mod_script.__events = {}
         mod_script.__ticks = {}
         mod_script.__mod_name = mod_name
@@ -164,6 +183,7 @@ local function run_mod(mod_name)
         environment.script = mod_script
         environment.global = global.globals[mod_name]
         environment._G = environment
+
         local mt = {}
         --TODO: don't just pass the global environment as a metatable fallback, make a proper environment
         --current method can break some mods as they don't expect the environment to not contain everything
@@ -173,6 +193,16 @@ local function run_mod(mod_name)
         --TODO: implement __newindex to protect as well?
         setmetatable(environment, mt)
         
+        environment.require = function(path)
+            if mod_script.__loaded_files[path] then
+                return mod_script.__loaded_files[path]
+            else
+                mod_script.__loaded_files[path] = load(global.mod_files[mod_name][path], 'hotpatch require', 'bt', environment)
+                mod_script.__loaded_files[path]()
+                return mod_script.__loaded_files[path]
+            end
+        end
+
         --load/run code
         local mod_code = load(global.mod_code[mod_name], 'hotpatch loader', 'bt', environment)
         mod_env[mod_name] = environment
@@ -243,9 +273,10 @@ local function on_init()
     global.mod_code = global.mod_code or {} --juuuuust in case
     global.mod_version = global.mod_version or {} --ditto
     global.globals = global.globals or {} --double ditto
+    global.mod_files = global.mod_files or {} --triple ditto
     for k, v in pairs(initial_code) do
         local n = initial_name[k]
-        install_mod(n, initial_version[k], v)
+        install_mod(n, initial_version[k], v, initial_files[k])
         run_mod(n)
         mod_init(n)
     end
@@ -308,20 +339,20 @@ local remote_interface = {}
 -- FACTORIO CONSOLE STRIPS LINEFEEDS WHICH MAKES ALL THE CODE BECOME COMMENTED OUT
 --TODO: gate these behind admin permissions; if (game.player and game.player.admin) should work for console commands?
 
-remote_interface['install'] = function(mod_name, mod_version, mod_code)
+remote_interface['install'] = function(mod_name, mod_version, mod_code, mod_files)
     -- this installs a new mod and runs on_init, then registers events
     -- Note that mods may expect that certain events haven't been called yet when their on_init is ran
     -- This may prevent them from functioning properly, without manually calling the events they expect
     -- examples: on_player_created
     local caller = game.player or _ENV
     if (caller == _ENV) or caller.admin then
-        install_mod(mod_name, mod_version, mod_code)
+        install_mod(mod_name, mod_version, mod_code, mod_files)
         run_mod(mod_name)
         mod_init(mod_name)
     end
 end
 
-remote_interface['update'] = function(mod_name, mod_version, mod_code)
+remote_interface['update'] = function(mod_name, mod_version, mod_code, mod_files)
     -- this updates an existing mod
     -- the current mods events are de-registered, the new code is installed, on_load is triggered, and then events are registered
     -- finally, the mod is informed of the update, so it can run migrations from the previous version
@@ -330,7 +361,7 @@ remote_interface['update'] = function(mod_name, mod_version, mod_code)
     if (caller == _ENV) or caller.admin then
         local old_version = global.mod_version[mod_name]
         mod_reset_events(mod_name)
-        install_mod(mod_name, mod_version, mod_code)
+        install_mod(mod_name, mod_version, mod_code, mod_files)
         run_mod(mod_name)
         mod_load(mod_name)
 
