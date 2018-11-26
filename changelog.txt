@@ -1,4 +1,13 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.1.11
+Date: 27. 6. 2018
+  Bugfix:
+    - Fixed behaviour of require() specifically when a file in a folder requires a file relative to base directory
+    - Fixed loading multiple mods when a installed mod failed to run and was removed, which prevented the next mod from loading properly
+    - Fixed loading mods which modify global during control.lua execution
+  Info:
+    - hotpatch-remote-interface version 1.0.2
+---------------------------------------------------------------------------------------------------
 Version: 1.1.10
 Date: 27. 6. 2018
   Info:
