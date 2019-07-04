@@ -1,5 +1,5 @@
 local hotpatch_tools = require 'hotpatch.mod-tools'
-hotpatch_tools.static_mod('hotpatch-remote-interface', '1.0.3', [===[
+hotpatch_tools.static_mod('hotpatch-remote-interface', '1.0.2', [===[
 --[[
 
 Copyright 2018 Chrisgbk

@@ -1,5 +1,5 @@
 local hotpatch_tools = require 'hotpatch.mod-tools'
-hotpatch_tools.static_mod('hotpatch-gui', '1.0.6', [===[
+hotpatch_tools.static_mod('hotpatch-gui', '1.0.4', [===[
 --[[
 
 Copyright 2018 Chrisgbk
@@ -86,6 +86,7 @@ on_gui_click_handlers = {
         --on_gui_click_handlers['hotpatch-menu.IDE'](e)
         --do return end
         local player = game.players[e.player_index]
+        local top = mod_gui.get_button_flow(player)
         local left = mod_gui.get_frame_flow(player)
         local center = player.gui.center
 
@@ -99,20 +100,23 @@ on_gui_click_handlers = {
         end
         menu.visible = not menu.visible
     end,
-	['hotpatch-menu'] = function(e)
+    ['hotpatch-menu'] = function(e)
         local player = game.players[e.player_index]
+        local top = mod_gui.get_button_flow(player)
         local left = mod_gui.get_frame_flow(player)
+        local center = player.gui.center
 
-        if e.element.name ~= 'hotpatch-menu' then
-		    local menu = left['hotpatch-menu']
-            menu.visible = not menu.visible
-            on_gui_click_handlers[e.element.name](e)
-		end
+        local menu = left['hotpatch-menu']
+        menu.visible = not menu.visible
+
+        on_gui_click_handlers[e.element.name](e)
     end,
     ['hotpatch-menu.IDE'] = function(e)
         local player = game.players[e.player_index]
+        local top = mod_gui.get_button_flow(player)
+        local left = mod_gui.get_frame_flow(player)
         local center = player.gui.center
-		
+
         local IDE = center['hotpatch-IDE']
         if not IDE then
             IDE = center.add{type = 'frame', name = 'hotpatch-IDE', direction = 'vertical', caption = 'Hotpatch IDE', style = mod_gui.frame_style}
@@ -151,6 +155,8 @@ on_gui_click_handlers = {
     end,
     ['hotpatch-menu.console'] = function(e)
         local player = game.players[e.player_index]
+        local top = mod_gui.get_button_flow(player)
+        local left = mod_gui.get_frame_flow(player)
         local center = player.gui.center
 
         local hotpatch_console = center['hotpatch-console']
@@ -186,6 +192,9 @@ on_gui_click_handlers = {
     end,
     ['hotpatch-console-run'] = function(e)
         local player = game.players[e.player_index]
+
+        local top = mod_gui.get_button_flow(player)
+        local left = mod_gui.get_frame_flow(player)
         local center = player.gui.center
 
         local hotpatch_console = center['hotpatch-console']
@@ -243,6 +252,8 @@ on_gui_click_handlers = {
     end,
     ['hotpatch-IDE-file'] = function(e)
         local player = game.players[e.player_index]
+        local top = mod_gui.get_button_flow(player)
+        local left = mod_gui.get_frame_flow(player)
         local center = player.gui.center
 
         local element = e.element
@@ -285,6 +296,8 @@ end)
 on_gui_selection_state_changed_handlers = {
     ['hotpatch-console-mod-selector'] = function(e)
         local player = game.players[e.player_index]
+        local top = mod_gui.get_button_flow(player)
+        local left = mod_gui.get_frame_flow(player)
         local center = player.gui.center
 
         local element = e.element
@@ -303,6 +316,8 @@ on_gui_selection_state_changed_handlers = {
     end,
     ['hotpatch-IDE-mod-selector'] = function(e)
         local player = game.players[e.player_index]
+        local top = mod_gui.get_button_flow(player)
+        local left = mod_gui.get_frame_flow(player)
         local center = player.gui.center
 
         local element = e.element
@@ -358,20 +373,5 @@ script.on_event(defines.events.on_gui_closed, function(e)
 end)
 
 --]===])
-
---[===[
--- keeping this as a reminder
-['hotpatch-menu'] = function(e)
-        local player = game.players[e.player_index]
-        local top = mod_gui.get_button_flow(player)
-        local left = mod_gui.get_frame_flow(player)
-        local center = player.gui.center
-
-        local menu = left['hotpatch-menu']
-        menu.visible = not menu.visible
-
-        on_gui_click_handlers[e.element.name](e)
-    end,
---]===]
 
 return true
