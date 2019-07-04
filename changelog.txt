@@ -1,6 +1,15 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.1.12
+Date: 8. 12. 2018
+  Bugfix:
+    - Various small typos, copy-paste errors, etc have been fixed
+  Info:
+    - hotpatch-remote-interface version 1.0.3
+	- hotpatch-gui version 1.0.5
+	- hotpatch-commands version 1.0.2
+---------------------------------------------------------------------------------------------------
 Version: 1.1.11
-Date: 27. 6. 2018
+Date: 26. 11. 2018
   Bugfix:
     - Fixed behaviour of require() specifically when a file in a folder requires a file relative to base directory
     - Fixed loading multiple mods when a installed mod failed to run and was removed, which prevented the next mod from loading properly
