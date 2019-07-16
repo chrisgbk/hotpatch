@@ -837,17 +837,8 @@ run_mod = function(loaded_index)
     local mod = loaded_mods[loaded_index]
     if mod then
         local mod_name = mod.name
-        --local old_global = table.deepcopy(mod.env.global)
-		local old_global =  mod.env.global
-		mod.env.global = setmetatable({}, {
-		__index = function(_, k)
-			return mod.env.global[k]
-		end,
-		__newindex = function(_, k, v)
-			debug_log('assignment to global when none was expected', nil, 3)
-		end
-		})
-		
+        local old_global = table.deepcopy(mod.env.global)
+
         if strict_mode then
            --mod.env.global = {}
         end
@@ -870,23 +861,20 @@ run_mod = function(loaded_index)
                 --TODO: error, mod touched global inappropriately during load
             --end
            --mod.env.global = old_global
-		end
+
+        end
 
 		-- if a mod is being loaded that already has global data, it must be restored after
 		-- running control.lua, discarding any changes made
-		--[[
 		if not table.compare(old_global, {}) then
 			for k,_ in pairs(mod.env.global) do
 				mod.env.global[k] = nil
 			end
 			for k,v in pairs(old_global) do
-				print(k,v)
 				mod.env.global[k] = v
 			end
 			--mod.env.global = old_global
 		end
-		--]]
-		mod.env.global = old_global
 		old_global = nil
 
         mod.running = true
@@ -1037,10 +1025,6 @@ mod_on_load = function(loaded_index)
                 debug_log(result, mod_name)
                 return false
             end
-			--[[
-			if not table.compare(old_global, mod.env.global) then
-				debug_log('ERROR: global was modified by ' ..mod.name)
-			end--]]
         end
         register_mod_events(loaded_index)
         return true
@@ -1206,9 +1190,6 @@ on_load = function()
 
     -- run mods which loaded successfully
 	local failed_mods = {}
-	--log('before')
-	--log(serpent.block(global))
-	
     for i = 1, #loaded_mods do
         if run_mod(i) then
 			if not mod_on_load(i) then
@@ -1218,10 +1199,7 @@ on_load = function()
 			table.insert(failed_mods, i)
 		end
     end
-	
-	--log('after')
-	--log(serpent.block(global))	
-	
+
 	-- unload mods which failed to run
 	for i = 1, #failed_mods do
 		unload_mod(failed_mods[i])
