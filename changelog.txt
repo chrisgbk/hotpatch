@@ -1,3 +1,7 @@
+Version: 1.1.18
+Date: 6. 8. 2019
+  Bugfix:
+    - Fixed error with loading certain mods with global table modification detection 
 ---------------------------------------------------------------------------------------------------
 Version: 1.1.17
 Date: 6. 8. 2019

@@ -859,7 +859,7 @@ run_mod = function(loaded_index)
     if mod then
         local mod_name = mod.name
         local old_global =  mod.env.global
-        mod.env.global = wrap_table(table.deepcopy(old_global))
+        mod.env.global = wrap_table(old_global)
         
         debug_log({'hotpatch-info.running'}, mod_name)
 
