@@ -1,4 +1,4 @@
-local hotpatch_tools = require 'hotpatch.mod-tools'
+local hotpatch_tools = require 'hotpatch.core'
 hotpatch_tools.static_mod('hotpatch-gui', '1.0.6', [===[
 --[[
 
@@ -12,7 +12,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ]]
 -- MIT License, https://opensource.org/licenses/MIT
 
-local hotpatch_tools = require 'hotpatch.mod-tools'
+local hotpatch_tools = require 'hotpatch.core'
 local mod_gui = require 'mod-gui'
 
 --load private API
@@ -46,7 +46,7 @@ local mod_on_configuration_changed = hotpatch_tools.mod_on_configuration_changed
 
 local static_mods = hotpatch_tools.static_mods
 local console = hotpatch_tools.console
-local debug_log = hotpatch_tools.debug_log
+local hotpatch_log = hotpatch_tools.hotpatch_log
 local loaded_mods = hotpatch_tools.loaded_mods
 local installed_mods = hotpatch_tools.installed_mods
 

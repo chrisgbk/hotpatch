@@ -1,3 +1,14 @@
+---------------------------------------------------------------------------------------------------
+Version: 1.1.19
+Date: DD. MM. 2019
+  Bugfix:
+    - Fix desync caused by unloading a mod at runtime
+  Info:
+	- Added some initial support for determining which mod creates which events
+    - Updated Freeplay scenario to 0.17.68
+    - Internal refactoring and seperation
+    - Removed redundant locales that were added in attempt to solve a locale bug(unknown key spam during loading), that was actually a "bug" in Factorio that was mis-identified
+---------------------------------------------------------------------------------------------------
 Version: 1.1.18
 Date: 6. 8. 2019
   Bugfix:
