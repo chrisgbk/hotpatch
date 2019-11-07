@@ -19,20 +19,32 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 local hotpatch_log_levels = {['disabled'] = -1, ['severe'] = 1, ['error'] = 2, ['warning'] = 3, ['info'] = 4, ['verbose'] = 5, ['trace'] = 6}
 
-local hotpatch_log_settings = global.hotpatch_log_settings or _ENV.hotpatch_log_settings or {}
 local hotpatch_log_level
 local hotpatch_log_to_console_only
-local hotpatch_log_to_RCON --only affects when log_to_console_only is in effect
+local hotpatch_log_to_RCON
 local hotpatch_log_on_tick 
 
+local function get_hotpatch_log_settings()
+    return
+    {
+        hotpatch_log_level = hotpatch_log_level,
+        hotpatch_log_to_console_only = hotpatch_log_to_console_only,
+        hotpatch_log_to_RCON = hotpatch_log_to_RCON,
+        hotpatch_log_on_tick = hotpatch_log_on_tick
+    }
+end
+
 local function set_hotpatch_log_settings(settings)
-    hotpatch_log_settings = settings
     hotpatch_log_level = (tonumber(settings.level) or hotpatch_log_levels[settings.level]) or 0
     hotpatch_log_to_console_only = settings.log_to_console_only
-    hotpatch_log_to_RCON = settings.log_to_RCON --only affects when log_to_console_only is in effect
+    hotpatch_log_to_RCON = settings.log_to_RCON
+    if hotpatch_log_on_tick ~= settings.log_on_tick then
+        --TODO: handle run time log setting changes
+    end
     hotpatch_log_on_tick = settings.log_on_tick
+    global.hotpatch_log_settings = get_hotpatch_log_settings()
 end
-set_hotpatch_log_settings(hotpatch_log_settings)
+set_hotpatch_log_settings(global.hotpatch_log_settings or _ENV.hotpatch_log_settings or {})
 
 local static_translate = require 'core-static_translation'
 
@@ -63,6 +75,10 @@ local function hotpatch_log(message, mod_name, stack_level)
     if hotpatch_log_level > -1 then
         if not stack_level then stack_level = 2 end
         local di = debug.getinfo(stack_level)
+        local name = di.name
+        if name and name:match('pcall') then
+            di = debug.getinfo(stack_level + 1) 
+        end
         local line = di.currentline
         local file = (di.source:gsub('%@.*[/\\]currently%-playing[/\\]', ''))
 
@@ -96,9 +112,18 @@ local function hotpatch_log(message, mod_name, stack_level)
     end
 end
 
+local function restore_logging()
+    hidden = load([===[
+        return function(...) log(...) end
+    ]===], '[HOTPATCH')
+    hidden_log = hidden()
+end
+
 return setmetatable({
     log = hotpatch_log, 
-    set_hotpatch_log_settings = set_hotpatch_log_settings
+    set_hotpatch_log_settings = set_hotpatch_log_settings,
+    get_hotpatch_log_settings = get_hotpatch_log_settings,
+    restore_logging = restore_logging
 }, {
     __call = function(...) return hotpatch_log(...) end
 })

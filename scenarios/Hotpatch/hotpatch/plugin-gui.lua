@@ -99,20 +99,20 @@ on_gui_click_handlers = {
         end
         menu.visible = not menu.visible
     end,
-	['hotpatch-menu'] = function(e)
+    ['hotpatch-menu'] = function(e)
         local player = game.players[e.player_index]
         local left = mod_gui.get_frame_flow(player)
 
         if e.element.name ~= 'hotpatch-menu' then
-		    local menu = left['hotpatch-menu']
+            local menu = left['hotpatch-menu']
             menu.visible = not menu.visible
             on_gui_click_handlers[e.element.name](e)
-		end
+        end
     end,
     ['hotpatch-menu.IDE'] = function(e)
         local player = game.players[e.player_index]
         local center = player.gui.center
-		
+
         local IDE = center['hotpatch-IDE']
         if not IDE then
             IDE = center.add{type = 'frame', name = 'hotpatch-IDE', direction = 'vertical', caption = 'Hotpatch IDE', style = mod_gui.frame_style}
@@ -168,7 +168,7 @@ on_gui_click_handlers = {
             output.style.width = 800
             output.style.height = 600
             input.style.width = 600
-			hotpatch_console.visible = false
+            hotpatch_console.visible = false
         end
 
         local console_dropdown = hotpatch_console['hotpatch-console-top']['hotpatch-console-mod-selector']
@@ -205,7 +205,7 @@ on_gui_click_handlers = {
 
         local mod_name = console_dropdown.items[console_dropdown.selected_index]
         local loaded_index = find_loaded_mod(mod_name)
-        local env = loaded_mods[loaded_index].env
+        local env = loaded_mods[loaded_index]._ENV
         local old_print = env.print
         local old_log = env.log
 

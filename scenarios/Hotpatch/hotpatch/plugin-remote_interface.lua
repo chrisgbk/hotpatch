@@ -98,7 +98,7 @@ remote_interface['install'] = function(mod_name, mod_version, mod_code, mod_file
             end
             loaded_index = find_loaded_mod(mod_name)
             if loaded_index then
-                if not run_mod(loaded_index) then
+                if not run_mod(loaded_index, true) then
                     caller.print('execution failed for mod ' .. mod_name)
                     unload_mod(loaded_index)
                     return
@@ -152,7 +152,7 @@ remote_interface['run'] = function(mod_name)
     end
 
     if loaded_index then
-        if not run_mod(loaded_index) then
+        if not run_mod(loaded_index, true) then
             caller.print('execution failed for mod ' .. mod_name)
             unload_mod(loaded_index)
             return
@@ -207,7 +207,7 @@ remote_interface['update'] = function(mod_name, mod_version, mod_code, mod_files
         return
     end
     loaded_index = find_loaded_mod(mod_name)
-    if not run_mod(loaded_index) then
+    if not run_mod(loaded_index, true) then
         caller.print('execution failed for mod ' .. mod_name)
         unload_mod(loaded_index)
         return
@@ -257,8 +257,8 @@ remote_interface['exec'] = function(mod_name, exec_code)
         return
     end
     local loaded_index = find_loaded_mod(mod_name)
-    local env = loaded_mods[loaded_index].env
-    
+    local env = loaded_mods[loaded_index]._ENV
+
     local success
     local code, err = load(exec_code, exec_code, 't', env)
     if code then
@@ -272,6 +272,7 @@ remote_interface['exec'] = function(mod_name, exec_code)
 end
 
 --TODO: most of this function
+-- refactor and remove?
 remote_interface['clean'] = function(mod_name)
     -- Removes ALL mod data and reinitializes
     -- doesn't remove things a mod may add like surfaces, etc

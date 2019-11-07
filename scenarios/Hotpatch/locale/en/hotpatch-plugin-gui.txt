@@ -1,0 +1,11 @@
+[hotpatch-info]
+gui=dummy
+
+[hotpatch-trace]
+gui=dummy
+
+[hotpatch-warning]
+gui=dummy
+
+[hotpatch-error]
+gui=dummy

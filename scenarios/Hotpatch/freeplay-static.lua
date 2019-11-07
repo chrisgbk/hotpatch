@@ -2,10 +2,10 @@
 -- This code, and the freeplay locale files in the zip file, is the property of Wube
 -- As this is part of the base mod, the developers have given permission for modders to use/adapt the assets therein, for modding Factorio
 -- Any other use would require licensing/permission from Wube
--- If you don't want to run this, either comment this out before creating your scenario, OR uninstall freeplay at runtime
+
 local hotpatch_tools = require 'hotpatch.core'
 
-hotpatch_tools.static_mod('freeplay', '0.17.68', [===[
+hotpatch_tools.static_mod('freeplay', '0.17.71', [===[
 local handler = require("event_handler")
 handler.add_lib(require("freeplay"))
 handler.add_lib(require("silo-script"))
@@ -81,19 +81,19 @@ freeplay.add_remote_interface = function()
       return global.created_items
     end,
     set_created_items = function(map)
-      global.created_items = map
+      global.created_items = map or error("Remote call parameter to freeplay set created items can't be nil.")
     end,
     get_respawn_items = function()
       return global.respawn_items
     end,
     set_respawn_items = function(map)
-      global.respawn_items = map
+      global.respawn_items = map or error("Remote call parameter to freeplay set respawn items can't be nil.")
     end,
     set_skip_intro = function(bool)
       global.skip_intro = bool
     end,
     set_chart_distance = function(value)
-      global.chart_distance = tonumber(value)
+      global.chart_distance = tonumber(value) or error("Remote call parameter to freeplay set chart distance must be a number")
     end
   })
 end
@@ -102,7 +102,6 @@ return freeplay
 
 ]===],
 ['event_handler'] = [===[
-
 
 local libraries = {}
 
@@ -164,21 +163,21 @@ local register_events = function()
 end
 
 script.on_init(function()
+  register_events()
   for k, lib in pairs (libraries) do
     if lib.on_init then
       lib.on_init()
     end
   end
-  register_events()
 end)
 
 script.on_load(function()
+  register_events()
   for k, lib in pairs (libraries) do
     if lib.on_load then
       lib.on_load()
     end
   end
-  register_events()
 end)
 
 script.on_configuration_changed(function(data)

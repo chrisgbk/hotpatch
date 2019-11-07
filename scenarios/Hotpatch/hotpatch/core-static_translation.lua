@@ -1,3 +1,9 @@
+--[[--
+Hotpatch Core: Static Translation for Hotpatch-MultiMod: a tool to load multiple scenarios side-by-side,
+with support for both static loading and dynamic loading, as well as run-time patching.
+@module hotpatch.core-static_translation
+@author Chrisgbk
+]]
 --[[
 
 Copyright 2018 Chrisgbk
@@ -12,10 +18,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 -- Hotpatch-MultiMod: a tool to load multiple scenarios side-by-side, with support for both static loading and dynamic loading, as well as run-time patching
 
-local static_cfg = [[
+local static_cfg = [=[
 [hotpatch]
 log=@__1__:__2__] __3__
-log-mod=@__1__:__2__ >__4__<] __3__
+log-mod=@__1__:__2__] [__4__] __3__
 severe=SEVERE ERROR: __1__
 error=ERROR: __1__
 warning=WARNING: __1__
@@ -44,6 +50,14 @@ unloading=unloading...
 running=running...
 must-be-admin=You must be an admin to run this command
 remote-installing=installing remote interface
+adding-command=Adding command: __1__
+removing-command=Removing command: __1__
+adding-remote=Adding remote interface: __1__
+removing-remote=Removing remote interface: __1__
+invalid-index=Invalid mod index: __1__
+removed-command=Removed command: __1__
+removed-interface=Removed interface: __1__
+global-unsafe=Unsafe assignment to global table: __1__
 
 [hotpatch-trace]
 nil-var-access=_ENV nil variable access: __1__
@@ -93,14 +107,14 @@ invalid-API-access=Invalid API access: __1__
 not-installed=mod not installed, cannot install file for mod that does not exist
 compilation-failed=compilation failed for mod
 execution-failed=execution failed for mod
-path-not-found=path '__1__' not found
+module-not-found=module '__1__' not found
 on-init-failed=on_init failed
 on-load-failed=on_load failed
 on-configuration-changed-failed=on_configuration_changed failed
 
 [test-pluralization]
 test=__1:(^1$)=singular;(^[2-9]$)=plural single digit;([1-2][0-9]$)=plural ends with double digit <30;(.*)=fallback case%; plural with embedded %;;__
-]]
+]=]
 
 local function build_locale(ini)
     local t = {}

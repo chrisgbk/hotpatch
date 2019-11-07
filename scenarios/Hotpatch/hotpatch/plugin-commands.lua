@@ -104,7 +104,7 @@ local admin_commands = {
                 installed_index = find_installed_mod(mod.name)
                 load_mod(installed_index)
                 loaded_index = find_loaded_mod(mod.name)
-                run_mod(loaded_index)
+                run_mod(loaded_index, true)
                 mod_on_init(loaded_index)
             end
         end

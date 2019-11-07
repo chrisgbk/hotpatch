@@ -2,6 +2,8 @@
 
 --this is terrible hacked together coding, don't be surprised if it fails
 local seperator = (package.config:sub(1,1))
+local base = (arg[1] or '.'):gsub(seperator .. '$', '')
+local gsub_base = (base .. seperator):gsub('([%.%-])', '%%%1')
 local isWin = seperator == '\\'
 local getSubfolders
 local getFiles
@@ -22,7 +24,7 @@ if isWin then
     end
 
     function getFiles(directory, mask)
-        directory = directory or '.'
+        directory = directory or base
         mask = mask or ''
         return dir(' "' .. directory .. '\\' .. mask .. '" /b /a:-d')
     end
@@ -39,7 +41,7 @@ else
     end
     
     function getSubfolders(directory)
-        directory = directory or '.'
+        directory = directory or base
         local t = ls(directory .. ' -F')
         local r = {}
         for k, v in ipairs(t) do
@@ -51,7 +53,7 @@ else
     end
 
     function getFiles(directory, mask)
-        directory = directory or '.'
+        directory = directory or base
         mask = mask or ''
         local t = ls(directory .. '/' .. mask .. ' -F')
         local r = {}
@@ -64,18 +66,18 @@ else
     end
 end
 
-local output = io.open('output.txt', 'w+')
+local output = io.open('output.script', 'w+')
 output:setvbuf('no')
 local control_code
 
 local function escape(s)
-    return (s:gsub('([\\"])', '\\%1'))
+    return (s:gsub('(\\)', '\\%1'))
 end
 
 local nfiles, nfolders = 0, 0
 local parse
 parse = function(directory)
-    directory = directory or '.'
+    directory = directory or base
     local dirs = getSubfolders(directory)
     local v
     local cur_path = ((directory and (directory .. seperator)) or '')
@@ -95,22 +97,17 @@ parse = function(directory)
         print(path)
         local file = io.open(path)
         local code = file:read('a')
-        code = code:gsub('%-%-(.-)\n', '--[===[%1]===]\n')
-		code = code:gsub('%-%-%[===%[%[%[(.-)]===]\n', '--[[%1\n')
-		code = code:gsub('%-%-%[===%[]]]===]\n', '--]]\n')
-		code = code:gsub('\'%-%-%[===%[(.-)]===]\n', '\'--%1\n')
-		code = code:gsub('’', '\\\'')
-        code = escape(code)
-        code = code:gsub('\n', '\\n')
-        if path:match('control%.lua') then
+        --code = escape(code)
+        --code = code:gsub('(.-\n)', '  %1') -- pretty printing
+		local file_name = path:gsub(gsub_base, ''):gsub('\\','/'):gsub('%.lua', '')
+        if file_name:match('^control$') then
             control_code = code
         else
-			local file = escape(path):gsub('%.lua', ''):gsub('%.' .. seperator .. seperator, '', 1)
-			output:write('hotpatch_files["' .. file .. '"] = "')
-            output:write(code)
-            output:write('"\n')
-        end
-        file:close()
+			output:write('hotpatch_files["' .. file_name .. '"] = [===[\n')
+			output:write(code)
+			output:write(']===]\n')
+		end
+		file:close()
     end
 
 end
@@ -120,11 +117,11 @@ print('Packager tool')
 output:write('local hotpatch_files = {}\n')
 parse()
 
-output:write('local hotpatch_code = "')
+output:write('local hotpatch_code = [===[')
 output:write(control_code)
-output:write('"\n')
+output:write(']===]\n')
 local cd = io.popen"cd":read'*l'
-local mod_name, mod_version = cd:match(seperator .. '([^' .. seperator ..']-)%-?(%d*%.%d*%.%d*)$')
+local mod_name, mod_version = cd:match(seperator .. '([^' .. seperator ..']-)_(%d*%.%d*%.%d*)%-?.*$')
 if not mod_name then 
     mod_name = cd:match(seperator .. '([^' .. seperator ..']-)$')
     mod_version = '1.0.0'
@@ -137,4 +134,4 @@ output:close()
 print('')
 print('Packaging ' .. mod_name .. ' complete.')
 print('Processed ' .. nfolders .. ' folders containing ' .. nfiles .. ' files.')
-print('See output.txt')
+print('See output.script')

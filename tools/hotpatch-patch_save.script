@@ -1,0 +1,108 @@
+--[[
+memory uses LE byte order for W/DW
+LEN = BYTE(LEN) or BYTE(255) DWORD(LEN)
+Header(9 bytes): WORD(FACTORIO_MAJOR_VERSION) WORD(FACTORIO_MINOR_VERSION) WORD(FACTORIO_SUB_VERSION) WORD(0) BYTE(0)
+DWORD(BODY_COUNT)
+Body: LEN(MOD_NAME_LEN) STRING(MOD_NAME) LEN(GLOBAL_LEN) STRING(GLOBAL) BYTE(1)
+...
+]]
+local serpent = require 'serpent'
+local seperator = (package.config:sub(1,1))
+local base = (arg[1] or ('.')):gsub('([^' .. seperator .. '])$', '%1' .. seperator)
+local function backup_file(filename)
+    local source = io.open(filename, 'rb')
+    local dest = io.open(filename .. '.bak', 'wb')
+    
+    dest:setvbuf('no')
+    local data = source:read('a')
+    dest:write(data)
+    dest:flush()
+    
+    dest:close()
+    source:close()
+end
+backup_file(base .. 'script.dat')
+backup_file(base .. 'level.dat')
+backup_file(base .. 'level-init.dat')
+backup_file(base .. 'control.lua')
+
+local mod = {}
+mod.name = 'level'
+mod.version = '1.0.0'
+mod.code = read_control_lua
+mod.files = read_all_files
+mod.global = load(global[1])()
+
+--io.popen('mkdir ' .. base .. '\\hotpatch\\')
+io.popen('robocopy ..\\scenarios\\Hotpatch\\ ' .. base .. ' /E')
+
+local script_dat = io.open(base .. 'script.dat', 'rb')
+
+local header = script_dat:read(9) -- skip header but save for output
+local bytes = script_dat:read(4)
+local body_count = ('<I4'):unpack(bytes)
+local name, global = {}, {}
+for i = 1, body_count do
+    local name_len = script_dat:read(1):byte()
+    if name_len == 255 then
+        bytes = script_dat:read(4)
+        name_len = ('<I4'):unpack(bytes)
+    end
+    name[i] = script_dat:read(name_len)
+    if name[i] == 'hotpatch' then
+        error('Hotpatch already exists in this save!')
+    end
+        
+    local global_len = script_dat:read(1):byte()
+    if global_len == 255 then
+        bytes = script_dat:read(4)
+        global_len = ('<I4'):unpack(bytes)
+    end
+    global[i] = script_dat:read(global_len)
+end
+script_dat:close() 
+script_dat = io.open(base .. 'script.dat', 'wb')
+script_dat:setvbuf('no')
+--we close and reopen in write mode to truncate existing file
+
+local g = {}
+g.mods = {}
+g.mods[1] = mod
+g.hotpatch_log_settings = {level = 'info'}
+global[1] = serpent.dump(g)
+name[1] = 'hotpatch'
+
+script_dat:write(header)
+script_dat:write(('<I4'):pack(body_count))
+
+for i = 1, body_count do
+    if name[i]:len() < 255 then
+        script_dat:write(('<I1'):pack(name[i]:len()))
+    else
+        script_dat:write(('<I1'):pack(255))
+        script_dat:write(('<I4'):pack(name[i]:len()))
+    end
+    script_dat:write(name[i])
+    
+    if global[i]:len() < 255 then
+        script_dat:write(('<I1'):pack(global[i]:len()))
+    else
+        script_dat:write(('<I1'):pack(255))
+        script_dat:write(('<I4'):pack(global[i]:len()))
+    end
+    script_dat:write(global[i])
+    script_dat:write(('<I1'):pack(1))
+end
+
+script_dat:flush()
+script_dat:close()
+
+local level_dat = io.open(base .. 'level.dat', 'rb')
+level_dat:setvbuf('no')
+level_dat:flush()
+level_dat:close()
+
+local level_init_dat = io.open(base .. 'level-init.dat', 'rb')
+level_init_dat:setvbuf('no')
+level_init_dat:flush()
+level_init_dat:close()
