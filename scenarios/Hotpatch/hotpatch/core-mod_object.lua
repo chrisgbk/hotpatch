@@ -51,6 +51,8 @@ local mod_obj_template = {
 }
 --]==]
 
+local rendering = rendering --this is a workaround specifically because rendering is available in control.lua processing but not on_load, where mods are loaded
+
 local function create_proxy_table(table)
     return setmetatable({}, {
         __index = table,
@@ -254,8 +256,6 @@ local function generate_mod_obj(mod)
         -- specified mod doesn't exist
         error('mod ' .. fs .. ' doesn\'t exist')
         end
-
-
             if m == mod then
                 modulename = mn
             else
@@ -409,10 +409,10 @@ local function generate_mod_obj(mod)
         local old_path = package._current_path_in_package
 
         for i = 1, #package.searchers do
-            local r,p = package.searchers[i](modulename)
-            if r then
+            local l,p = package.searchers[i](modulename)
+            if l then
                 p = p or modulename
-                r = r() or true
+                r = l() or true
                 loaded[p] = r
                 hotpatch_log('Requested: ' .. modulename .. ' found: ' .. p);
 
@@ -427,7 +427,12 @@ local function generate_mod_obj(mod)
 
     env.require = require
 
-    env.script = setmetatable({}, {
+    env['game'] = setmetatable({}, {
+        __index = function(_, k) return game[k] end,
+        __pairs = function(t) local function iter(t, k) local v; k, v = next(game, k); if v then return k, t[k] end; end; return iter, t, nil end
+    })
+
+    env['script'] = setmetatable({}, {
         __index = mod_script,
         __pairs = function(t) local function iter(t, k) local v; k, v = next(mod_script, k); if v then return k, t[k] end; end; return iter, t, nil end
     })
@@ -469,7 +474,7 @@ local function generate_mod_obj(mod)
         end,
         remove_command = function(name)
             mod_obj.commands[name] = nil
-                        hotpatch_log({'hotpatch-info.removing-command', name}, mod_name)
+            hotpatch_log({'hotpatch-info.removing-command', name}, mod_name)
             return commands.remove_command(name)
         end,
         commands = setmetatable({}, {
@@ -482,54 +487,66 @@ local function generate_mod_obj(mod)
         })
     }
 
+    env['settings'] = setmetatable({}, {
+        __index = function(_, k) return settings[k] end,
+        __pairs = function(t) local function iter(t, k) local v; k, v = next(settings, k); if v then return k, t[k] end; end; return iter, t, nil end
+    })
+
+    env['rcon'] = setmetatable({}, {
+        __index = function(_, k) return rcon[k] end,
+        __pairs = function(t) local function iter(t, k) local v; k, v = next(rcon, k); if v then return k, t[k] end; end; return iter, t, nil end
+    })
+    
+    hotpatch_log('rendering')
+    for k,v in pairs(rendering) do hotpatch_log(k) end
+    env['rendering'] = setmetatable({}, {
+        __index = function(_, k) return rendering[k] end,
+        __pairs = function(t) local function iter(t, k) local v; k, v = next(rendering, k); if v then return k, t[k] end; end; return iter, t, nil end
+    })
+
     env['load'] = function(l, s, m, e)
         return load(l, s, m, e or env)
     end
+    
     env['loadstring'] = env['load']
 
-
-    env['game'] = setmetatable({}, {
-        __index = function(_, k) return game[k] end,
-        __pairs = function(t) local function iter(t, k) local v; k, v = next(game, k); if v then return k, t[k] end; end; return iter, t, nil end
-    })
-
     local mt = {}
-        local umt
+    local umt
 
-        env['setmetatable'] = function(t, metat)
-            if t == env then
-                umt = metat
-                return t
-            end
-            return setmetatable(t, metat)
+    env['setmetatable'] = function(t, metat)
+        if t == env then
+            umt = metat
+            return t
         end
+        return setmetatable(t, metat)
+    end
 
     mt.__index = function(t, k)
         hotpatch_log({'hotpatch-trace.nil-var-access', k}, nil, 3)
-                if umt then
-                    local index = umt.__index
+        if umt then
+            local index = umt.__index
 
-                    if type(index) == 'function' then
-                        return index(t,k)
-                    else
-                        return index[k]
-                    end
+            if type(index) == 'function' then
+                return index(t,k)
+            else
+                return index[k]
+            end
 
-                end
+        end
     end
     mt.__newindex = function(t, k, v)
         hotpatch_log({'hotpatch-trace.nil-var-assignment', k}, nil, 3)
-                if umt then
-                    local newindex = umt.__newindex
+        if umt then
+            local newindex = umt.__newindex
 
-                    if type(newindex) == 'function' then
-                        return newindex(t,k,v)
-                    else
-                        newindex[k] = v
-                        return
-                    end
+            if type(newindex) == 'function' then
+                return newindex(t,k,v)
+            else
+                newindex[k] = v
+                return
+            end
 
-                end
+        end
         rawset(t,k,v)
     end
 

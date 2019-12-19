@@ -225,7 +225,8 @@ install_mod = function(mod_name, mod_version, mod_code, mod_files)
     local mod = {}
     if index then
         hotpatch_log('attempt to install mod that is already installed, reinstalling: ' .. mod_name)
-        mod = global.mods[index]
+        mod = table.remove(global.mods, index)
+        table.insert(global.mods, mod)
     else
         --next free index
         table.insert(global.mods, mod)
@@ -362,12 +363,14 @@ end
 local wrap_table
 wrap_table = function(t, path)
     local mt = {    
-        __wrapped = true,
+        __wrapped = t,
         __index = function(_, k)
-        local v = rawget(t, k)
+            local v = rawget(t, k)
             if type(v) == 'table' then
                 if not v.__self then
-                    local p = (path or 'global') .. '[' .. tostring(k) .. ']'
+                    local k_type = type(k)
+                    local q = ((k_type == 'string') and '"') or ''
+                    local p = (path or 'global') .. '[' .. q .. tostring(k) .. q .. ']'
                     return wrap_table(v, p)
                 end
             end
@@ -375,8 +378,17 @@ wrap_table = function(t, path)
         end,
         __newindex = function(_, k, v)
             local k_type = type(k)
-            local wrap = ((k_type == 'string') and '"') or ''
-            local p = (path or 'global') .. '[' .. wrap .. tostring(k) .. wrap .. ']'
+            if type(v) == 'table' then
+                local m = getmetatable(v)
+                if m then
+                    local wrapped = m.__wrapped
+                    if wrapped then
+                        v = wrapped
+                    end
+                end
+            end
+            local q = ((k_type == 'string') and '"') or ''
+            local p = (path or 'global') .. '[' .. q .. tostring(k) .. q .. ']'
             hotpatch_log({'hotpatch-info.global-unsafe', p}, nil, 3)
             rawset(t, k, v)
         end
@@ -389,13 +401,13 @@ run_mod = function(loaded_index, init)
     local mod_obj = loaded_mods[loaded_index]
     if mod_obj then
         local mod_name = mod_obj.name
-        local old_global =    mod_obj._ENV.global
+        local old_global = mod_obj._ENV.global
         if init then
-                --mod_obj._ENV.global = wrap_table(old_global)
+            --mod_obj._ENV.global = wrap_table(old_global)
         else
-                --ignore changes made during control.lua processing if loading
-                --mod_obj._ENV.global = wrap_table(table.deepcopy(old_global))
-                mod_obj._ENV.global = table.deepcopy(old_global)
+            --ignore changes made during control.lua processing if loading
+            --mod_obj._ENV.global = wrap_table(table.deepcopy(old_global))
+            mod_obj._ENV.global = table.deepcopy(old_global)
         end
 
         hotpatch_log({'hotpatch-info.running'}, mod_name)
@@ -588,7 +600,7 @@ mod_on_load = function(loaded_index)
     if mod_obj then
         hotpatch_log({'hotpatch-trace.mod-on-load'}, mod_obj.name)
         if mod_obj.on_load then
-            local old_global =    mod_obj._ENV.global
+            local old_global = mod_obj._ENV.global
             --mod_obj._ENV.global = wrap_table(old_global)
             local success, result = xpcall(mod_obj.on_load, debug.traceback)
             if not success then

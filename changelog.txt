@@ -1,9 +1,10 @@
 ---------------------------------------------------------------------------------------------------
 Version: 1.1.19
-Date: DD. MM. 2019
+Date: 19. 12. 2019
   Bugfix:
     - Fix desync caused by unloading a mod at runtime
     - Fix deviations from factorio behaviour when loading mods written a certain way which led to desyncs
+	- Fix desync caused by updating a mod
   Info:
     - Supports setting metatable on _ENV in mods
     - Supports including files in other hotpatch mods

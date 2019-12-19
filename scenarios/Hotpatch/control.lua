@@ -63,6 +63,6 @@ require 'hotpatch.plugin-gui'
 
 -- mod code goes here
 
---require 'freeplay-static'
+require 'freeplay-static'
 
 -- end of mod code

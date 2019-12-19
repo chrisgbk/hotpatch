@@ -78,6 +78,11 @@ script.on_event(defines.events.on_player_joined_game, function(e)
     button = top.add{type = 'sprite-button', name = 'hotpatch-button', sprite='utility/heat_exchange_indication', tooltip = 'Hotpatch', style = mod_gui.button_style}
 end)
 
+script.on_event(defines.events.on_player_created, function(e)
+    local player = game.players[e.player_index]
+    local top = mod_gui.get_button_flow(player)
+end)
+
 local on_gui_click_handlers
 local on_gui_selection_state_changed_handlers
 
