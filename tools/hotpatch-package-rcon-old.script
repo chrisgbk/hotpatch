@@ -1,0 +1,139 @@
+--this is terrible hacked together coding, don't be surprised if it fails
+local seperator = (package.config:sub(1,1))
+local isWin = seperator == '\\'
+local getSubfolders
+local getFiles
+
+if isWin then
+    local function dir(args)
+        local file = io.popen ('dir' .. args) or ''
+        local t = {}
+        for line in file:lines() do 
+            t[#t + 1] = line
+        end
+        file:close()
+        return t
+    end
+
+    function getSubfolders(directory)
+        directory = directory or '.'
+        return dir(' "' .. directory .. '" /b /a:d')
+    end
+
+    function getFiles(directory, mask)
+        directory = directory or '.'
+        mask = mask or ''
+        return dir(' "' .. directory .. '\\' .. mask .. '" /b /a:-d')
+    end
+else
+--this is not tested yet, might not work ¯\_(ツ)_/¯
+    local function ls(args)
+        local file = io.popen ('ls' .. args) or ''
+        local t = {}
+        for line in file:lines() do 
+            t[#t + 1] = line
+        end
+        file:close()
+        return t
+    end
+    
+    function getSubfolders(directory)
+        directory = directory or '.'
+        local t = ls(directory .. ' -F')
+        local r = {}
+        for k, v in ipairs(t) do
+            if v:sub(-1) == '/' then
+                table.insert(r, v:gsub('/', ''))
+            end
+        end
+        return r
+    end
+
+    function getFiles(directory, mask)
+        directory = directory or '.'
+        mask = mask or ''
+        local t = ls(directory .. '/' .. mask .. ' -F')
+        local r = {}
+        for k, v in ipairs(t) do
+            if v:sub(-1) ~= '/' then
+                table.insert(r, v)
+            end
+        end
+        return r
+    end
+end
+
+local output = io.open('output.txt', 'w+')
+output:setvbuf('no')
+local control_code
+
+local function escape(s)
+    return (s:gsub('([\\"])', '\\%1'))
+end
+
+local parse
+parse = function(directory)
+    for k, v in pairs(getFiles(directory, '*.lua')) do
+        local path = ((directory and (directory .. seperator)) or '') .. v
+        local file = io.open(path)
+        local code = file:read('a')
+        code = code:gsub('%-%-(.-)\n', '--[===[%1]===]\n')
+		code = code:gsub('%-%-%[===%[%[%[(.-)]===]\n', '--[[%1\n')
+		code = code:gsub('%-%-%[===%[]]]===]\n', '--]]\n')
+		code = code:gsub('\'%-%-%[===%[(.-)]===]\n', '\'--%1\n')
+		code = code:gsub('’', '\\\'')
+        code = escape(code)
+        code = code:gsub('\n', '\\n')
+        if path == 'control.lua' then
+            control_code = code
+        else
+			local file = escape(path):gsub('%.lua', '')
+			--output:write('/silent-command  hotpatch_file = ""\n')
+			local i = 1
+			--for i=1, #code, 2048 do
+			while i <= #code do
+				local len = 2048
+				if i == 1 then
+					output:write('/silent-command  hotpatch_file = "')
+				else
+					output:write('/silent-command  hotpatch_file = hotpatch_file .. "')
+				end
+				if code:sub(i + len - 1, i + len - 1) == '\\' then len = len + 1 end
+				output:write(code:sub(i, i + len - 1))
+				output:write('"\n')
+				i = i + len
+            end
+			output:write('/silent-command  hotpatch_files["' .. file .. '"] = hotpatch_file\n')
+            
+        end
+        file:close()
+    end
+    for k, v in pairs(getSubfolders(directory)) do
+        local path = ((directory and (directory .. seperator)) or '') .. v
+        parse(path)
+    end
+end
+
+output:write('/silent-command hotpatch_files = {}\n')
+parse()
+
+--output:write('/silent-command hotpatch_code = ""\n')
+local i = 1
+	--for i=1, #control_code, 2048 do
+	while i <= #control_code do
+		local len = 2048
+		if i == 1 then
+			output:write('/silent-command  hotpatch_code = "')
+		else
+			output:write('/silent-command  hotpatch_code = hotpatch_code .. "')
+		end
+		if control_code:sub(i + len - 1, i + len - 1) == '\\' then len = len + 1 end
+		output:write(control_code:sub(i, i + len - 1))
+		output:write('"\n')
+		i = i + len
+	end
+local cd = io.popen"cd":read'*l'
+local mod_name = cd:match(seperator .. '([^' .. seperator ..']-)$')
+output:write('/silent-command remote.call("hotpatch", "install", "' .. mod_name.. '", "1.0.0", hotpatch_code, hotpatch_files)')
+output:flush()
+output:close()
